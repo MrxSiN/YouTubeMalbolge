@@ -173,7 +173,8 @@ def build(*, device_test: bool = False) -> Path:
     target_hash = target_hashes.pop()
     digest = verified_bindings(bindings)
 
-    asm_files = sorted(
+    asm_jar = os.environ.get("MALBOLGE_ASM_JAR")
+    asm_files = [Path(asm_jar)] if asm_jar else sorted(
         (Path.home() / ".gradle/caches/modules-2/files-2.1/org.ow2.asm/asm/9.9.1").rglob("asm-9.9.1.jar")
     )
     if len(asm_files) != 1:

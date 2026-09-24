@@ -60,6 +60,10 @@ dependencies {
     implementation(files("../build/generated/module.jar"))
 }
 
+// Pinned ASM for the Malbolge backend; the build script checks its digest.
+val malbolgeAsm = configurations.create("malbolgeAsm") { isTransitive = false }
+dependencies { malbolgeAsm("org.ow2.asm:asm:9.9.1") }
+
 val deviceTest = providers.gradleProperty("deviceTest").map(String::toBoolean).orElse(false)
 
 val generateMalbolgeModule = tasks.register<Exec>("generateMalbolgeModule") {
@@ -68,6 +72,7 @@ val generateMalbolgeModule = tasks.register<Exec>("generateMalbolgeModule") {
     if (deviceTest.get()) command += "--device-test"
     commandLine(command)
     inputs.property("deviceTest", deviceTest)
+    inputs.files(malbolgeAsm)
     inputs.files(fileTree("../source") { include("**/*.mal") })
     inputs.files(fileTree("../toolchain/backend") { include("**/*.java") })
     inputs.file("src/main/res/drawable-nodpi/ytm_hellfire.png")
@@ -79,6 +84,7 @@ val generateMalbolgeModule = tasks.register<Exec>("generateMalbolgeModule") {
     )
     outputs.file("../build/generated/module.jar")
     doFirst {
+        environment("MALBOLGE_ASM_JAR", malbolgeAsm.singleFile.absolutePath)
         if (deviceTest.get() && gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
             error("deviceTest is only valid for a development APK")
         }
