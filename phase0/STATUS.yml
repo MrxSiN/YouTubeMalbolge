@@ -1,0 +1,58 @@
+schema: 1
+phase: 0
+date: 2026-09-23
+status: PARTIALLY_CHARACTERIZED
+
+documented_pass:
+  - vector_stable_v2_2
+  - libxposed_api_102_0_0
+  - libxposed_service_102_0_0
+  - vector_v2_2_api_service_submodule_shas_verified
+  - api102_hook_id
+  - api102_replace_hook
+  - api102_unhook
+  - api102_saved_reload_state
+  - api102_old_hook_handles
+  - on_package_ready_final_classloader
+  - remote_preferences_injected_access
+  - remote_preferences_manager_service_access
+  - module_metadata_files
+  - auto_hot_reload_property
+  - official_r8_entry_resource_adaptation
+  - dexkit_2_2_0
+  - agp_9_4_1
+  - gradle_9_6_0
+  - jdk_17
+  - compile_sdk_37
+  - malbolge_reference_semantics_defined
+  - malbolge_reference_source_vendored_and_hashed
+  - malbolge_reference_evaluator_pinned
+  - malbolge_resource_limits_pinned
+  - malbolge_spec_interpreter_conflict_policy_defined
+  - malbolge_project_input_policy_defined
+
+architecture_pins:
+  authority: toolchain/LOCKFILE
+
+device_characterized:
+  evidence: phase0/HOT_RELOAD_RESULTS.md
+  items:
+    - vector_reload_callback_order_real_device
+    - normal_lifecycle_replay_after_hot_reload   # not replayed
+    - multi_hook_partial_failure_behavior        # no rollback
+    - old_classloader_collection
+    - remote_preferences_listener_thread         # binder thread
+    - reload_veto
+    - repeated_reload_20x
+
+empirical_pending:
+  - remote_preferences_service_reconnect
+  - automatic_hot_reload_on_module_update
+  - reference_runtime_environment
+  - youtube_process_allowlist
+  - low_end_performance_baseline
+  - malbolge_conformance_suite_passes
+
+production:
+  authority: target/current/target-release.lock.yml
+  auto_hot_reload_authority: toolchain/LOCKFILE

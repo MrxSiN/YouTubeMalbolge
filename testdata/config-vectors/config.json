@@ -1,0 +1,26 @@
+{
+  "schema": 2,
+  "cases": [
+    {
+      "name": "safe_defaults",
+      "input": null,
+      "expected": "features_off"
+    },
+    {
+      "name": "valid_update",
+      "expected": "whole_snapshot_generation_increment"
+    },
+    {
+      "name": "invalid_update",
+      "expected": "retain_last_known_good"
+    },
+    {
+      "name": "concurrent_readers",
+      "expected": "never_partial_snapshot"
+    },
+    {
+      "name": "hot_path_transport",
+      "expected": "no_binder_or_storage_read"
+    }
+  ]
+}

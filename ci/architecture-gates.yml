@@ -1,0 +1,75 @@
+schema: 3
+state: DEVELOPMENT_UNFROZEN_RELEASE_GATED
+
+documented_phase0_complete:
+  - vector_stable_release_selected
+  - libxposed_api102_surface_documented
+  - remote_preferences_architecture_selected
+  - one_entry_metadata_contract_selected
+  - r8_entry_adaptation_contract_documented
+  - dexkit_build_only_version_selected
+  - android_build_toolchain_pinned
+  - malbolge_reference_semantics_defined
+  - malbolge_deterministic_profile_defined
+
+required_before_executable_project_source:
+  - vector_api102_device_lifecycle_probe_passes
+  - hot_reload_failure_modes_characterized
+  - remote_preferences_listener_device_probe_passes
+  - remote_preferences_service_reconnect_probe_passes
+  - vector_v2_2_api_service_submodule_shas_verified
+  - malbolge_reference_source_vendored_and_hashed
+  - malbolge_reference_evaluator_pinned
+  - malbolge_resource_limits_pinned
+  - malbolge_conformance_suite_passes
+  - canonical_cmg_serialization_fixtures_frozen
+  - independent_validator_contract_frozen
+  - classfile_backend_smoke_artifact_verified
+  - generated_module_metadata_smoke_artifact_verified
+  - low_end_reference_runtime_environment_selected
+
+required_before_feature_implementation:
+  - semantic_endpoint_abi_frozen
+  - capability_policy_frozen
+  - effect_composition_frozen
+  - state_ownership_frozen
+  - threading_rules_frozen
+  - hook_topology_frozen
+  - failure_and_circuit_breaker_model_frozen
+  - one_exact_target_release_selected
+  - target_selection_policy_frozen
+  - binding_acceptance_model_frozen
+  - diagnostics_privacy_frozen
+  - release_hardening_equivalence_gate_frozen
+
+required_before_auto_hot_reload:
+  - same_hook_replacement_passes
+  - hook_add_remove_passes
+  - multi_hook_partial_failure_policy_verified
+  - config_listener_handoff_passes
+  - reload_state_envelope_passes
+  - target_mismatch_reload_fails_closed
+  - old_classloader_collectible
+  - repeated_reload_has_no_duplicate_hooks
+
+required_before_release:
+  - target_binding_unique
+  - exact_target_gate_passes
+  - all_enabled_feature_vectors_pass
+  - debug_release_semantic_equivalence_passes
+  - r8_artifact_loads
+  - no_private_semantic_leakage
+  - no_runtime_dexkit_artifact
+  - no_project_native_runtime_artifact
+  - performance_budget_passes
+  - reproducible_unsigned_build_passes
+  - private_provenance_archived
+
+forbidden_runtime_components:
+  - DexKit
+  - resolver_cache
+  - compatibility_daemon
+  - project_native_control_plane
+  - custom_startup_plan_vm
+  - Malbolge_interpreter
+  - post_R8_semantic_rewriter

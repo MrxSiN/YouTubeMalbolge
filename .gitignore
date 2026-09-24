@@ -1,0 +1,17 @@
+.idea/
+.vscode/
+local.properties
+*.iml
+*.apk
+*.aab
+*.dex
+*.class
+build/
+**/build/
+generated/
+private/
+private-maps/
+tmp/
+out/
+.gradle/
+.DS_Store

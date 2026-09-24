@@ -1,0 +1,50 @@
+schema_version: 1
+# UNBOUND -> ARTIFACT_SELECTED -> BOUND
+# BOUND: exact reference artifact set and thirty verified Endpoint bindings.
+state: BOUND
+selection_policy: stable-channel-reference-artifact
+selected_on: 2026-09-23
+acquisition: Play-installed on characterization device (phase0/DEVICE_OBSERVATIONS.md)
+package_name: com.google.android.youtube
+release_channel: stable
+version_name: "21.37.42"
+version_code: 1561296049
+approved_signer_sha256:
+  - 5aad2bee6db95d17e05a08d7d1e64c10a1511879154483916b6ae6c7fd9cb0c6
+base_apk:
+  sha256: 39a955c0e7695efdd9d3fef1d609aa9c82c3aecf118f75da5ae8017102b9211e
+  dex_entry_digests:
+    classes.dex: 2d1b1521c6e2e7bc116b6c6f2bb767dc3613b9e82eb9506f4111b366ba8ef06a
+    classes2.dex: 503608b6ba68444b423c2a0dce2a7d98785bf6f746377c7e90d86e88138d85a1
+    classes3.dex: 1574ede931110078df2c9fe8d9678746ccf16749c4d6c4bc16676672da622dfc
+    classes4.dex: b19d51c0ae46c0d075543240861e4b65630ba2c5f03ddc574fb24cefc4e3d73e
+    classes5.dex: 6334810d8f83f591e4f0b56013833b8ff70504146ce9be50dbcd1c68692ff12f
+    classes6.dex: 79fbcbd78f023c5900a7a38006fc77772c4c7bfeb29c7ccea3e25a8cd4d6c288
+    classes7.dex: 8f47364a4f6dd3617a18216918648d832fd07b4bc0dd8604593ccc5aa28622dd
+    classes8.dex: 956644fdc66bc55e09cf60f4c872ff62ea5747c66c62e569e9351d083ccf069f
+# No split carries DEX. arm64_v8a carries 37 native libraries: native code, but not a
+# DEX binding surface; it becomes identity-relevant only if an Endpoint depends on it.
+code_splits: []
+native_splits_observed:
+  split_config.arm64_v8a.apk: 0acbb158d341034f6dbc9fd8e8eea075ad8be96b38b834acef2aa406781ac75a
+resource_splits_observed:
+  split_config.en.apk: 3aa9cc3a9bd9e39bcb247a1e5da8045f30a1feb7ddd1d38ac0b333bd988aa12f
+  split_config.xxhdpi.apk: 2f185efd08cd832d751733ca796366b80f844a1a788841d4240364c03cf2571c
+binding_schema_version: 1
+verified_binding_set_path: target/current/verified-binding-set.json
+verified_binding_set_digest: 0c09b260d3035e3fa69750ab83e1870806d96ebdc2ef7b2657644fd07aa4528b
+allowed_process_names:
+  - com.google.android.youtube
+hot_reload_epoch: 1
+production_hooks_enabled: false
+production_features_enabled: false
+
+notes:
+  - Supersedes the 21.37.47 research candidate; Play served 21.37.42.
+  - The verified set covers the sponsored attribution banner, Premium offer, and two video ad construction Endpoints.
+  - SponsorBlock adds the player controller constructor, video stage, playback progress constructor, and player seek Endpoints.
+  - The settings entry adds the root settings screen builder, its screen access, and twelve androidx.preference members.
+  - Sponsored feed filtering adds the parser, component identifier, empty component factory, and empty result value Endpoints.
+  - Shorts ad filtering adds two item insertion and one ad predicate Endpoints.
+  - Open acceptance gates keep production hooks and features disabled.
+  - allowed_process_names reflects the cold-start observation; extend only per Feature need.

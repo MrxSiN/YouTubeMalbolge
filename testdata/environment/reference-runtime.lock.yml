@@ -1,0 +1,20 @@
+state: UNBOUND
+device:
+  model: null
+  soc: null
+android:
+  version: null
+  build_fingerprint: null
+root:
+  implementation: null
+  version: null
+zygisk:
+  implementation: null
+  version: null
+vector:
+  release: v2.2
+  commit: 88f8e1f
+target_manifest_digest: null
+notes:
+  - Select one low-end rooted reference device before performance/reload budgets freeze.
+  - Upstream Vector support range is not itself a module support guarantee.

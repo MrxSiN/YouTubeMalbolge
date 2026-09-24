@@ -1,0 +1,10 @@
+DexKit 2.2.0
+https://github.com/LuckyPray/DexKit
+Release commit: ffa6c51
+Copyright (c) LuckyPray and DexKit contributors.
+
+Upstream licensing statement:
+- Except for Core/, DexKit is licensed under Apache License 2.0.
+- Core/ is licensed under GNU Lesser General Public License v3 (LGPL-3.0).
+
+This project does not modify DexKit source. DexKit is consumed as the published Android dependency org.luckypray:dexkit:2.2.0.

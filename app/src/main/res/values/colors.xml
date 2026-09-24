@@ -1,0 +1,6 @@
+<resources>
+    <color name="ytm_background">#ffffff</color>
+    <color name="ytm_primary">#0f0f0f</color>
+    <color name="ytm_secondary">#606060</color>
+    <color name="ytm_accent">#065fd4</color>
+</resources>

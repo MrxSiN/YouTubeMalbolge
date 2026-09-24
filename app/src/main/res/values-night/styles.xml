@@ -1,0 +1,12 @@
+<resources>
+    <style name="YouTubeMalbolgeTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">@color/ytm_accent</item>
+        <item name="android:textColorPrimary">@color/ytm_primary</item>
+        <item name="android:textColorSecondary">@color/ytm_secondary</item>
+        <item name="android:windowBackground">@color/ytm_background</item>
+        <item name="android:statusBarColor">@color/ytm_background</item>
+        <item name="android:navigationBarColor">@color/ytm_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

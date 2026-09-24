@@ -1,0 +1,19 @@
+ 13882 14282 I YTMProbeTarget: OBS h1=[g2] h2=[g2]
+ 14801 14801 I YTMProbe: g3 CTRL status api=102 framework=Vector 2.2 (3080) 88f8e1fa-JingMatrix-Vector scope=[io.github.mrxsin.ytmprobe.target]
+ 14801 14801 I YTMProbe: g3 CTRL target process=io.github.mrxsin.ytmprobe.target pid=13882 state=STALE loadedVersion=2
+ 13882 14282 I YTMProbeTarget: OBS h1=[g2] h2=[g2]
+ 14801 14801 I YTMProbe: g3 CTRL target process=io.github.mrxsin.ytmprobe.target pid=13882 state=STALE loadedVersion=2
+ 13882 14330 I YTMProbe: g2 CB onHotReloading
+ 13882 14330 I YTMProbe: g2 LISTENER detached
+ 13882 14330 I YTMProbe: g3 CB onHotReloaded process=io.github.mrxsin.ytmprobe.target extrasGen=2 oldHandles=2
+ 13882 14330 I YTMProbe: g3 OLD_HANDLE id=ytmprobe.H1 exec=h1
+ 13882 14330 I YTMProbe: g3 OLD_HANDLE id=ytmprobe.H2 exec=h2
+ 13882 14330 I YTMProbe: g3 REPLACED id=ytmprobe.H2 same=false
+ 13882 14330 I YTMProbe: g3 UNHOOKED id=ytmprobe.H1
+ 13882 14330 I YTMProbe: g3 LISTENER attached value=2
+ 13882 14330 I YTMProbe: g3 SAVED_STATE fromGen=2
+ 13882 14330 D VectorModuleManager: Hot reloaded io.github.mrxsin.ytmprobe
+ 14801 14839 I YTMProbe: g3 CTRL reload result pid=13882 status=SUCCEEDED message=null
+ 13882 14282 I YTMProbeTarget: OBS h1=[g2, orig] h2=[g2, g3]
+ 13882 14847 I YTMProbe: g3 OLD_CLASSLOADER collected afterChecks=1
+ 13882 14282 I YTMProbeTarget: OBS h1=[orig] h2=[g3]

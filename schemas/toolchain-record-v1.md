@@ -1,0 +1,24 @@
+# Toolchain Record v1
+
+Archive privately per release:
+
+```text
+source_tree_hash
+source_profile
+frontend_hash
+cmg_hash
+validator_hash
+target_release_manifest
+target_artifact_hashes
+dexkit_version
+binding_evidence_hash
+vector_release_commit
+libxposed_api_revision
+android_sdk
+d8_r8_agp_jdk_versions
+release_layout_seed
+r8_mapping_hash
+unsigned_apk_hash
+signed_apk_hash
+provenance_hash
+```

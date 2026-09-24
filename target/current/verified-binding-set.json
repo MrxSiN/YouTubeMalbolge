@@ -1,0 +1,277 @@
+{
+  "bindings": [
+    {
+      "class_descriptor": "Lasel;",
+      "endpoint_id": "ad_attribution_visibility",
+      "member_descriptor": "()V",
+      "member_kind": "METHOD",
+      "member_name": "c",
+      "staticness": false,
+      "validation_digest": "8e2d97427138f22c066fd039eb0250453022bf97ca02fa9b00ca867c54e8dd59"
+    },
+    {
+      "class_descriptor": "Lhln;",
+      "endpoint_id": "empty_component_factory",
+      "member_descriptor": "(Lhbu;)Lhlm;",
+      "member_kind": "METHOD",
+      "member_name": "aE",
+      "staticness": true,
+      "validation_digest": "e8d5c71c6a7ba0b0d39dd6ad8147ee25763f33114749af0cf7bc3dcddb7eaa0e"
+    },
+    {
+      "class_descriptor": "Lhlm;",
+      "endpoint_id": "empty_component_value",
+      "member_descriptor": "Lhln;",
+      "member_kind": "FIELD",
+      "member_name": "a",
+      "staticness": false,
+      "validation_digest": "5ded9ef9561adec8a96c2b698b00da7682534c9eed15e223a84adb237bf27a18"
+    },
+    {
+      "class_descriptor": "Laqdy;",
+      "endpoint_id": "playback_progress",
+      "member_descriptor": "(JJJJJJJZLjava/lang/String;)V",
+      "member_kind": "CONSTRUCTOR",
+      "member_name": "<init>",
+      "staticness": false,
+      "validation_digest": "d1a5ca1f09dbaae5d0073b6b021957081c53f7bc230dd74e0aa59479636c1097"
+    },
+    {
+      "class_descriptor": "Lacpe;",
+      "endpoint_id": "player_ad_layout",
+      "member_descriptor": "(Lakgh;)V",
+      "member_kind": "METHOD",
+      "member_name": "b",
+      "staticness": false,
+      "validation_digest": "1d421b39865344242fbd977d674186317735948b94ea0945201d1e5d0f2ae512"
+    },
+    {
+      "class_descriptor": "Lartc;",
+      "endpoint_id": "player_controller",
+      "member_descriptor": "(Luog;Lanxv;Laonb;Lapll;Larcl;Lawjf;Larbf;Larcn;Lakft;Laffg;Lauqw;Larte;Lajvd;Lajux;Larwl;Lartl;Lbrqt;Larto;Lj$/util/Optional;Larav;Laojm;Lj$/util/Optional;Laqzn;Lxfo;Larkt;Lapza;Lbrqt;Lbueh;Lalan;Lanrw;Lbvyw;Lbrqt;Ljava/util/concurrent/Executor;Lbueh;Larcd;)V",
+      "member_kind": "CONSTRUCTOR",
+      "member_name": "<init>",
+      "staticness": false,
+      "validation_digest": "b3f9ff3e4904cfcdee09701cdb045920bd51307a0f1058874d17bbd8006ddbfe"
+    },
+    {
+      "class_descriptor": "Lartc;",
+      "endpoint_id": "player_seek",
+      "member_descriptor": "(JLbkku;)Z",
+      "member_kind": "METHOD",
+      "member_name": "ar",
+      "staticness": false,
+      "validation_digest": "b647f1f82c271e151daa865cd78822f82f59e5860bcd56e89492be591e7aaf8b"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_context",
+      "member_descriptor": "Landroid/content/Context;",
+      "member_kind": "FIELD",
+      "member_name": "j",
+      "staticness": false,
+      "validation_digest": "6b1b317477656284812f92815b86b42600257fb1489c0f512ec258cfb3586da7"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/PreferenceGroup;",
+      "endpoint_id": "preference_group_add",
+      "member_descriptor": "(Landroidx/preference/Preference;)V",
+      "member_kind": "METHOD",
+      "member_name": "ai",
+      "staticness": false,
+      "validation_digest": "bbe2fbf1138c820c88ead4359e57c6dd7979ff803d9d94f57c380f087da4675c"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/PreferenceGroup;",
+      "endpoint_id": "preference_group_find",
+      "member_descriptor": "(Ljava/lang/CharSequence;)Landroidx/preference/Preference;",
+      "member_kind": "METHOD",
+      "member_name": "l",
+      "staticness": false,
+      "validation_digest": "766c563152e5f73448ce100acfc0a045a3378c3b548e19880869a7f96e1b5635"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_icon_space",
+      "member_descriptor": "(Z)V",
+      "member_kind": "METHOD",
+      "member_name": "K",
+      "staticness": false,
+      "validation_digest": "fe1467c9f8162d3941cac6374266241941c66c83547991722846d1f85e8d31fc"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_intent",
+      "member_descriptor": "Landroid/content/Intent;",
+      "member_kind": "FIELD",
+      "member_name": "s",
+      "staticness": false,
+      "validation_digest": "db508317928c52059f3630debc99dd2bac7c9b98b2ebd39cc4664123a504bc99"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_layout",
+      "member_descriptor": "I",
+      "member_kind": "FIELD",
+      "member_name": "A",
+      "staticness": false,
+      "validation_digest": "7479f1c013fe470f1b641dae48820547754d048ed9bda5ebdffbba4b691a57b5"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_new",
+      "member_descriptor": "(Landroid/content/Context;)V",
+      "member_kind": "CONSTRUCTOR",
+      "member_name": "<init>",
+      "staticness": false,
+      "validation_digest": "e6dae084db722e46195c12296cd0b038d1bcf671b81f2d233d25e38a6f177f38"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_set_icon",
+      "member_descriptor": "(Landroid/graphics/drawable/Drawable;)V",
+      "member_kind": "METHOD",
+      "member_name": "J",
+      "staticness": false,
+      "validation_digest": "7b85db323e6925cce69fdc99f0a90159cc550570fecaaf7644b03834e65d2200"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_set_key",
+      "member_descriptor": "(Ljava/lang/String;)V",
+      "member_kind": "METHOD",
+      "member_name": "L",
+      "staticness": false,
+      "validation_digest": "609a9d3eff34bddfd9dd51d34c291e5dbda6a141de7e29bc11cb490e6b37fe18"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_set_order",
+      "member_descriptor": "(I)V",
+      "member_kind": "METHOD",
+      "member_name": "M",
+      "staticness": false,
+      "validation_digest": "2c63470160e8823cc26ff3322793050f6e84c872bd445ad7097db877b7f1e49f"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_set_summary",
+      "member_descriptor": "(Ljava/lang/CharSequence;)V",
+      "member_kind": "METHOD",
+      "member_name": "n",
+      "staticness": false,
+      "validation_digest": "72ca1cb4401130cb38e4281ba29f820937ba14b18f8d26b72653ebccc72b1715"
+    },
+    {
+      "class_descriptor": "Landroidx/preference/Preference;",
+      "endpoint_id": "preference_set_title",
+      "member_descriptor": "(Ljava/lang/CharSequence;)V",
+      "member_kind": "METHOD",
+      "member_name": "Q",
+      "staticness": false,
+      "validation_digest": "707f0b4398a5caefb144cbc36a369a475f1bbd0a88c41d9a7be7bba00d664c2a"
+    },
+    {
+      "class_descriptor": "Lcom/google/android/apps/youtube/app/red/presenter/CompactYpcOfferModuleView;",
+      "endpoint_id": "premium_offer_visibility",
+      "member_descriptor": "(II)V",
+      "member_kind": "METHOD",
+      "member_name": "onMeasure",
+      "staticness": false,
+      "validation_digest": "80876b87628d8429a7f64e5e996fda995ea51559015b27b31c6f3ea7d5485514"
+    },
+    {
+      "class_descriptor": "Lown;",
+      "endpoint_id": "settings_owner",
+      "member_descriptor": "Lowp;",
+      "member_kind": "FIELD",
+      "member_name": "a",
+      "staticness": false,
+      "validation_digest": "c152c0f442246357b00e76d3ba454bd3e617447ec77ea477147452268a0a2d96"
+    },
+    {
+      "class_descriptor": "Lown;",
+      "endpoint_id": "settings_root",
+      "member_descriptor": "()V",
+      "member_kind": "METHOD",
+      "member_name": "run",
+      "staticness": false,
+      "validation_digest": "07de88c2bd22ab76a51be1f3095b8215a54245863142e5250b99e6515e5be094"
+    },
+    {
+      "class_descriptor": "Lfaw;",
+      "endpoint_id": "settings_screen",
+      "member_descriptor": "()Landroidx/preference/PreferenceScreen;",
+      "member_kind": "METHOD",
+      "member_name": "p",
+      "staticness": false,
+      "validation_digest": "721f79303ac7cb95a8773c7275582900073f4b697454097f3cfcbab4705ca3af"
+    },
+    {
+      "class_descriptor": "Laqak;",
+      "endpoint_id": "shorts_ad_predicate",
+      "member_descriptor": "(Lbclh;)Z",
+      "member_kind": "METHOD",
+      "member_name": "Q",
+      "staticness": true,
+      "validation_digest": "34764e0051c1db434e91556541d2cd559dcbc3418c50851c7a4fe03da6c2e6c3"
+    },
+    {
+      "class_descriptor": "Lasgh;",
+      "endpoint_id": "shorts_item_primary",
+      "member_descriptor": "(Lbclh;Ljava/util/List;IJJ)J",
+      "member_kind": "METHOD",
+      "member_name": "H",
+      "staticness": false,
+      "validation_digest": "f915d76482763d6c73b299962a9c26f5515938c4cc036cb0e6109c74ade12cc5"
+    },
+    {
+      "class_descriptor": "Lasgh;",
+      "endpoint_id": "shorts_item_secondary",
+      "member_descriptor": "(Lbclh;Ljava/util/List;IJJ)J",
+      "member_kind": "METHOD",
+      "member_name": "I",
+      "staticness": false,
+      "validation_digest": "e14827d85921b2549215cb7aae36ebb8731487a1698bbfa61d657119fb23c640"
+    },
+    {
+      "class_descriptor": "Lwhx;",
+      "endpoint_id": "sponsored_component_identifier",
+      "member_descriptor": "Ljava/lang/String;",
+      "member_kind": "FIELD",
+      "member_name": "o",
+      "staticness": false,
+      "validation_digest": "02905ea3ccaef69fac5fd2ac8e38867724ea922da5a8a00c4fc9f037a093fc6b"
+    },
+    {
+      "class_descriptor": "Lvay;",
+      "endpoint_id": "sponsored_feed_component",
+      "member_descriptor": "(Lhbu;Lwhx;Lvqv;Ljava/util/List;Lwis;Z)Lhbp;",
+      "member_kind": "METHOD",
+      "member_name": "a",
+      "staticness": false,
+      "validation_digest": "b69fe9f946351f3dcad614bcf33b07a9e8dcee4aad9c39f6ce45e762d18aede1"
+    },
+    {
+      "class_descriptor": "Lacgq;",
+      "endpoint_id": "video_ad_loader",
+      "member_descriptor": "(Ljava/util/List;)V",
+      "member_kind": "METHOD",
+      "member_name": "t",
+      "staticness": false,
+      "validation_digest": "8904cb518332eeaed28327affb0e47442814c30081b063f8ddfbd541b40cd528"
+    },
+    {
+      "class_descriptor": "Ljko;",
+      "endpoint_id": "video_stage",
+      "member_descriptor": "(Laqdx;)V",
+      "member_kind": "METHOD",
+      "member_name": "h",
+      "staticness": false,
+      "validation_digest": "16094e97af20110868ae9be4dac5e5856a738a21a084f8f571d0da9ed0096fb5"
+    }
+  ],
+  "schema": "VBS-1",
+  "set_digest": "0c09b260d3035e3fa69750ab83e1870806d96ebdc2ef7b2657644fd07aa4528b",
+  "target_manifest_digest": "6ef44483f9a76bb8aeab5c79b087fed758f0e78bd4bb43b597b4b7a5ca68d188"
+}

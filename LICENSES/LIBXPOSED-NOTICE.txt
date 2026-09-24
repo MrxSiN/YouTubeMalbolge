@@ -1,0 +1,5 @@
+libxposed API and service 102.0.0
+https://github.com/libxposed
+
+Copyright libxposed contributors.
+Licensed under the Apache License, Version 2.0.
