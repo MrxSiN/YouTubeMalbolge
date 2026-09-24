@@ -1,0 +1,147 @@
+name: Android CI & Release
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build, sign and upload APK
+    # The Malbolge build script calls javac.exe/java.exe with a Windows classpath.
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY }}
+      SIGNING_KEY_ALIAS: ${{ secrets.ALIAS }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify source manifest
+        run: tr -d '\r' < MANIFEST.sha256 | sha256sum -c --quiet
+
+      - name: Read project version
+        id: metadata
+        run: |
+          VERSION="$(sed -n 's/^ *versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts)"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk_path=app/build/outputs/apk/release/YouTubeMalbolge-v$VERSION.apk" >> "$GITHUB_OUTPUT"
+
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match project version v$VERSION." >&2
+            exit 1
+          fi
+
+      - name: Check signing configuration
+        id: signing
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Pull-request builds are unsigned because signing secrets are not exposed to PR code."
+            exit 0
+          fi
+
+          missing=()
+          [[ -n "$SIGNING_KEY_BASE64" ]] || missing+=(SIGNING_KEY)
+          [[ -n "$SIGNING_KEY_ALIAS" ]] || missing+=(ALIAS)
+          [[ -n "$SIGNING_STORE_PASSWORD" ]] || missing+=(STORE_PASSWORD)
+          [[ -n "$SIGNING_KEY_PASSWORD" ]] || missing+=(KEY_PASSWORD)
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required GitHub Actions secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Decode release keystore
+        if: steps.signing.outputs.enabled == 'true'
+        run: printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/ytmalbolge-release.keystore"
+
+      - name: Build release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/ytmalbolge-release.keystore
+          ANDROID_KEYSTORE_ALIAS: ${{ env.SIGNING_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.SIGNING_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ env.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Locate and verify APK
+        id: apk
+        run: |
+          APK_PATH="${{ steps.metadata.outputs.apk_path }}"
+          if [[ "${{ steps.signing.outputs.enabled }}" == "true" ]]; then
+            cp app/build/outputs/apk/release/app-release.apk "$APK_PATH"
+            APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner.bat | sort -V | tail -n 1)"
+            test -n "$APKSIGNER"
+            cmd //c "$(cygpath -w "$APKSIGNER")" verify --verbose --print-certs "$(cygpath -w "$APK_PATH")"
+          else
+            cp app/build/outputs/apk/release/app-release-unsigned.apk "$APK_PATH"
+            echo "Unsigned pull-request APK built successfully."
+          fi
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          awk -v v="## ${{ steps.metadata.outputs.version }}" '
+            $0 == v { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/RELEASE_NOTES.md"
+          test -s "$RUNNER_TEMP/RELEASE_NOTES.md"
+
+      - name: Upload APK to workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: YouTubeMalbolge-v${{ steps.metadata.outputs.version }}-${{ github.run_number }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: YouTube Malbolge v${{ steps.metadata.outputs.version }}
+          body_path: ${{ runner.temp }}/RELEASE_NOTES.md
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}

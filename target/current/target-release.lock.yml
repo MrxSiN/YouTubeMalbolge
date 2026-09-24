@@ -36,8 +36,8 @@ verified_binding_set_digest: 0c09b260d3035e3fa69750ab83e1870806d96ebdc2ef7b26576
 allowed_process_names:
   - com.google.android.youtube
 hot_reload_epoch: 1
-production_hooks_enabled: false
-production_features_enabled: false
+production_hooks_enabled: true
+production_features_enabled: true
 
 notes:
   - Supersedes the 21.37.47 research candidate; Play served 21.37.42.
@@ -46,5 +46,5 @@ notes:
   - The settings entry adds the root settings screen builder, its screen access, and twelve androidx.preference members.
   - Sponsored feed filtering adds the parser, component identifier, empty component factory, and empty result value Endpoints.
   - Shorts ad filtering adds two item insertion and one ad predicate Endpoints.
-  - Open acceptance gates keep production hooks and features disabled.
+  - Production hooks and features enabled by the project owner for release 1.0.0 (2026-09-25).
   - allowed_process_names reflects the cold-start observation; extend only per Feature need.

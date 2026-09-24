@@ -22,7 +22,7 @@ access therefore needs a new exact-target BindingSpec and a device validation.
 | Fullscreen ads dependency | Not bound |
 | User settings UI | Implemented; "Hide sponsored banners" controls both attribution visibility and feed filtering through RemotePreferences |
 
-Production remains disabled in `target/current/target-release.lock.yml`. The opt-in
-development build activates eleven generated hooks. The current device check covers
+Production is enabled in `target/current/target-release.lock.yml` for release 1.0.0;
+the release build activates eleven generated hooks. The current device check covers
 the visible Home feed and Shorts adapter items; other ad surfaces need separate validation. This is not a
-complete Hide Ads port or a release-ready module.
+complete Hide Ads port.

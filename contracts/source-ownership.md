@@ -16,4 +16,7 @@ Future ownership:
 | `70_features` | post-freeze product Feature/Effect units |
 | `80_bindings` | post-target-selection build-only BindingSpecs |
 
+An area's directory under `source/` is created with its first Malbolge unit;
+`00_boot`, `10_vector` and `60_packaging` have none yet.
+
 One source area cannot redefine another area's authoritative state/metadata.

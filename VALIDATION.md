@@ -24,7 +24,7 @@ PASS / VERIFIED:
 ## Development implementation audit
 
 - exact target: BOUND 21.37.42 with three verified Endpoints
-- production hooks and features: disabled by target lock
+- production hooks and features: enabled by target lock for release 1.0.0
 - executable project `.mal`: eight units, thirteen typed records
 - generated runtime classfiles: eight, with one Xposed entry
 - handwritten Java/Python: build toolchain and Binding Laboratory only

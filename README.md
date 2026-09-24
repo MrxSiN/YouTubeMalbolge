@@ -25,11 +25,6 @@ Open YouTube → **Settings** → **YouTube Malbolge**.
 > Endpoints are bound for that build, with no fallback resolvers. Tested on a Pixel 8 Pro with
 > Vector v2.2 and libxposed API 102. On any other YouTube version the module installs nothing.
 
-> [!IMPORTANT]
-> Production gates remain off (`target/current/target-release.lock.yml`). A default build installs
-> **no** behavioral hook. The features below run in the device test build,
-> `-PdeviceTest=true`, which activates eleven validated hooks. See [Build](#build).
-
 ## Why it works this way
 
 Most modules are written in Java or Kotlin and find YouTube's obfuscated members at runtime. This
@@ -187,33 +182,28 @@ source. `architecture/authority-map.yml` is the authority; the reasons are in `a
 
 ## Build
 
-Set `JAVA_HOME` to Android Studio's JBR, then:
+Set `JAVA_HOME` to a JDK 17 and have Python 3 on `PATH`, then:
 
 ```bash
-./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
 
-That artifact has no behavioral hook, because production gates remain off. For the bound device
-test only:
-
-```bash
-./gradlew :app:assembleDebug -PdeviceTest=true
-```
-
-`:app:assembleRelease` rejects `deviceTest`. Toolchain pins live in `toolchain/LOCKFILE`: AGP
+The release build installs the eleven hooks, because production is enabled in
+`target/current/target-release.lock.yml`. It is signed when `ANDROID_KEYSTORE_PATH`,
+`ANDROID_KEYSTORE_ALIAS`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_PASSWORD` are set, and
+unsigned otherwise. Pushing a `v*` tag builds, signs and attaches the APK to a GitHub release
+(`.github/workflows/android.yml`). `-PdeviceTest=true` forces the hooks on in a debug build and
+is rejected for release. Toolchain pins live in `toolchain/LOCKFILE`: AGP
 9.4.1, Gradle 9.6, JDK 17, API 37. `MANIFEST.sha256` holds the hash of every tracked source file.
 
 ## Design
 
 ```
 source/
-  00_boot/         module boot
-  10_vector/       Vector / libxposed API 102 surface
   20_semantics/    Endpoints: what each hook point means
   30_config/       ConfigItems stored in RemotePreferences
   40_manager/      the settings page and its entry
   50_diag/         hook compatibility diagnostics
-  60_packaging/    packaging
   70_features/     Features and their Effects
   80_bindings/     exact 21.37.42 BindingSpecs
 toolchain/         evaluator, validator, backend, Binding Laboratory

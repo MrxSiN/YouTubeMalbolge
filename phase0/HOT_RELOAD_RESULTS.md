@@ -2,7 +2,8 @@
 
 Environment: characterization device in `phase0/DEVICE_OBSERVATIONS.md` (Pixel 8 Pro,
 Android 17, KernelSU + Zygisk Next, Vector v2.2 `88f8e1fa`). Not the low-end reference
-device. Probe: `phase0/probe/` (ADR-037). Condensed logs: `phase0/probe/results/`.
+device. Probe: `phase0/probe/` (ADR-037), removed after Phase 0;
+its source and condensed logs remain in git history before release 1.0.0.
 
 Reloads were requested explicitly through libxposed service
 `XposedService.hotReloadModule` with module `autoHotReload=false`. Automatic reload on

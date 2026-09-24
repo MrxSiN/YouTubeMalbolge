@@ -9,8 +9,8 @@
 **Project runtime executable representation:** ordinary optimized DEX  
 **Project-owned executable source:** Malbolge only, after architecture freeze  
 **Compatibility:** one module release × one exact validated current YouTube release  
-**Production target:** `ARTIFACT_SELECTED` (YouTube 21.37.42), not bound  
-**Production features/hooks:** disabled
+**Production target:** `BOUND` (YouTube 21.37.42)  
+**Production features/hooks:** enabled for release 1.0.0
 **Phase-0 documentary characterization:** completed; device probes pending
 
 Terminology labels used below:
@@ -1236,8 +1236,6 @@ Genuine prototype questions:
 - binding uniqueness on that artifact;
 - measured low-end budgets;
 - pinned AGP/R8 keep/resource adaptation behavior.
-
-See `RISKS_AND_OPEN_QUESTIONS.md`.
 
 These are not permission to add fallbacks. Failed validation remains fail closed.
 

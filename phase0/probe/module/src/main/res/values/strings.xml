@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">YTM Phase-0 Probe</string>
-    <string name="module_description">Non-product API-102 characterization probe. Hooks only the probe target app.</string>
-</resources>

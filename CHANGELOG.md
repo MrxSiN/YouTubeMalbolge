@@ -4,9 +4,8 @@
 
 The first release. Bound to exactly one YouTube build, `21.37.42` from Google Play:
 thirty target Endpoints, no fallback resolvers. Tested on a Pixel 8 Pro with Vector
-v2.2 and libxposed API 102. Production gates remain off, so a default build installs
-no behavioral hook; the device test build (`-PdeviceTest=true`) activates eleven
-validated hooks.
+v2.2 and libxposed API 102. Production hooks and features are enabled, so the
+signed release APK installs eleven hooks.
 
 ### Added
 
@@ -59,6 +58,24 @@ validated hooks.
   `SeekPort`, `SegmentStore`, `SegmentFetch` and the settings classes when a Feature
   needs them. `generateMalbolgeModule` tracks every backend source file.
 - ConfigItems may use more than one RemotePreferences group.
+- Production hooks and features enabled in `target/current/target-release.lock.yml`.
+  The release build now installs the eleven hooks that were previously only in the
+  device test build.
+- Release builds are signed from `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_ALIAS`,
+  `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_PASSWORD`. A GitHub Actions workflow
+  verifies `MANIFEST.sha256`, builds, signs and attaches the APK to the release for
+  every `v*` tag.
+- R8 no longer fails on the hidden `android.app.ActivityThread` class the generated
+  diagnostics refer to.
+
+### Removed
+
+- `AUDIT_V4_DEEP_CHECK.md`, `MIGRATION_V3_TO_V4.md` and `RISKS_AND_OPEN_QUESTIONS.md`:
+  v3 to v4 history and Phase 0 questions.
+- The Phase 0 hot-reload probe, `phase0/probe/`. Its results stay in
+  `phase0/HOT_RELOAD_RESULTS.md`; its source is in git history.
+- The empty `source/00_boot`, `source/10_vector` and `source/60_packaging` areas.
+  Each is created with its first Malbolge unit.
 
 ## Pre-release history
 

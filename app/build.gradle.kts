@@ -6,6 +6,25 @@ android {
     namespace = "io.github.mrxsin.ytmalbolge"
     compileSdk = 37
 
+    val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    val keystoreAlias = System.getenv("ANDROID_KEYSTORE_ALIAS")
+    val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    val releaseSigning = if (
+        !keystorePath.isNullOrBlank() && !keystoreAlias.isNullOrBlank() &&
+        !keystorePassword.isNullOrBlank() && !keyPassword.isNullOrBlank() &&
+        file(keystorePath).isFile
+    ) {
+        signingConfigs.create("release") {
+            storeFile = file(keystorePath)
+            storePassword = keystorePassword
+            keyAlias = keystoreAlias
+            this.keyPassword = keyPassword
+        }
+    } else {
+        null
+    }
+
     defaultConfig {
         applicationId = "io.github.mrxsin.ytmalbolge"
         minSdk = 32
@@ -24,6 +43,7 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            releaseSigning?.let { signingConfig = it }
         }
     }
 
