@@ -1,0 +1,2 @@
+# Keep every file byte-exact: Malbolge units and MANIFEST.sha256 hashes depend on it.
+* -text
