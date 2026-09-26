@@ -108,13 +108,13 @@ class SponsorBlockUnitTest(unittest.TestCase):
         graph = validate(self.frames)
         lines = plan_lines(graph["records"], "0" * 64, True)
         seek = next(line for line in lines if line[0] == "seek")
-        self.assertEqual(seek[1:4], ["METHOD", "artc", "ar"])
+        self.assertEqual(seek[1:4], ["METHOD", "arwg", "ar"])
         self.assertEqual(seek[-1], "SEEK_SOURCE_UNKNOWN")
         progress = next(line for line in lines if line[0] == "hook" and line[7] == "skip_segments")
-        self.assertEqual(progress[1:3], ["CONSTRUCTOR", "aqdy"])
+        self.assertEqual(progress[1:3], ["CONSTRUCTOR", "aqgu"])
         self.assertEqual(progress[-1], "0")
         stage = next(line for line in lines if line[0] == "hook" and line[7] == "observe_video_id")
-        self.assertEqual(stage[1:4] + stage[-1:], ["METHOD", "jko", "h", "h"])
+        self.assertEqual(stage[1:4] + stage[-1:], ["METHOD", "jlu", "h", "h"])
         segments = next(line for line in lines if line[0] == "segments")
         self.assertTrue(segments[5].startswith("?categories=%5B%22sponsor%22"))
         self.assertEqual(len([line for line in lines if line[0] == "category"]), 9)
@@ -133,7 +133,7 @@ class ShortsAdUnitTest(unittest.TestCase):
         self.assertEqual(len(hooks), 2)
         self.assertEqual({hook[3] for hook in hooks}, {"H", "I"})
         for hook in hooks:
-            self.assertEqual(hook[10:14], ["METHOD", "aqak", "Q", "(Lbclh;)Z"])
+            self.assertEqual(hook[10:14], ["METHOD", "aqdf", "U", "(Lbcpl;)Z"])
 
     def test_filter_requires_predicate_role(self):
         frames = evaluate_units()
@@ -175,7 +175,7 @@ class SettingsUnitTest(unittest.TestCase):
 
         lines = plan_lines(validate(self.frames)["records"], "0" * 64, True)
         hook = next(line for line in lines if line[0] == "hook" and line[7] == "inject_settings_entry")
-        self.assertEqual(hook[1:4] + [hook[8]], ["METHOD", "own", "run", "-1"])
+        self.assertEqual(hook[1:4] + [hook[8]], ["METHOD", "oyj", "run", "-1"])
         roles = {line[1] for line in lines if line[0] == "role"}
         self.assertEqual(len(roles), 14)
         self.assertIn(["layouts", "preference_with_icon"], lines)

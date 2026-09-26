@@ -1,6 +1,6 @@
 # BindingSpecs
 
-Two Malbolge units provide three BindingSpecs for exact YouTube `21.37.42`.
+Ten Malbolge units provide thirty BindingSpecs for exact YouTube `21.38.130`.
 Each Endpoint has one binding. DexKit validation and the verified set are in
 `phase0/BINDING_LAB_RESULTS.md` and `target/current/verified-binding-set.json`.
 

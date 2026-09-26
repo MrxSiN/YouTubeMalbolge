@@ -2,7 +2,7 @@
 
 Target lock states: `UNBOUND` → `ARTIFACT_SELECTED` → `BOUND`.
 
-Current state: **BOUND** — YouTube `21.37.42` exact bytes hashed; thirty
+Current state: **BOUND** — YouTube `21.38.130` exact bytes hashed; thirty
 Verified Target Binding Set entries cover the current development features.
 Production hooks and features are enabled for release 1.0.0 by the project owner.
 

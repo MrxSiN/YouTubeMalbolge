@@ -9,7 +9,7 @@
 **Project runtime executable representation:** ordinary optimized DEX  
 **Project-owned executable source:** Malbolge only, after architecture freeze  
 **Compatibility:** one module release × one exact validated current YouTube release  
-**Production target:** `BOUND` (YouTube 21.37.42)  
+**Production target:** `BOUND` (YouTube 21.38.130)
 **Production features/hooks:** enabled for release 1.0.0
 **Phase-0 documentary characterization:** completed; device probes pending
 

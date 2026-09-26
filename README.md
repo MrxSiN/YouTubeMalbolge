@@ -12,7 +12,7 @@ Open YouTube → **Settings** → **YouTube Malbolge**.
 
 [![Release](https://img.shields.io/github/v/release/MrxSiN/YouTubeMalbolge?include_prereleases&color=CC0000&label=release&style=for-the-badge)](https://github.com/MrxSiN/YouTubeMalbolge/releases)
 [![Downloads](https://img.shields.io/github/downloads/MrxSiN/YouTubeMalbolge/total?color=3DDC84&logo=android&logoColor=fff&style=for-the-badge)](https://github.com/MrxSiN/YouTubeMalbolge/releases)
-[![YouTube](https://img.shields.io/badge/YouTube-21.37.42-CC0000?logo=youtube&logoColor=fff&style=for-the-badge)](#compatibility)
+[![YouTube](https://img.shields.io/badge/YouTube-21.38.130-CC0000?logo=youtube&logoColor=fff&style=for-the-badge)](#compatibility)
 [![Bindings](https://img.shields.io/badge/endpoints-30%20bound-3DDC84?style=for-the-badge)](#compatibility)
 [![Licence](https://img.shields.io/github/license/MrxSiN/YouTubeMalbolge?color=CC0000&style=for-the-badge)](LICENSE)
 
@@ -21,7 +21,7 @@ Open YouTube → **Settings** → **YouTube Malbolge**.
 ---
 
 > [!NOTE]
-> **Bound to exactly one YouTube build: `21.37.42` (Google Play, stable).** Thirty target
+> **Bound to exactly one YouTube build: `21.38.130` (Google Play, stable).** Thirty target
 > Endpoints are bound for that build, with no fallback resolvers. Tested on a Pixel 8 Pro with
 > Vector v2.2 and libxposed API 102. On any other YouTube version the module installs nothing.
 
@@ -36,7 +36,7 @@ and D8 then shrink into the APK. Nothing in the module interprets anything on th
 |  | |
 |---|---|
 | 🧭 **Where you already are** | One "YouTube Malbolge" row above Account in YouTube's own Settings, drawn with YouTube's row layout. |
-| 🎯 **Exact target** | Each hook names one member of YouTube `21.37.42`. No runtime DexKit, no search, no guessing. |
+| 🎯 **Exact target** | Each hook names one member of YouTube `21.38.130`. No runtime DexKit, no search, no guessing. |
 | ⚛️ **All or nothing** | Hooks install as one transaction. If any binding or hook fails, every hook is rolled back and every switch goes grey. |
 | 🔍 **Checks itself** | The module app shows compatibility and a copyable hook report after YouTube's first start. |
 | 🔒 **One store** | Every switch lives in libxposed RemotePreferences, read by YouTube and written by the module app. |
@@ -113,7 +113,7 @@ YouTube renames its obfuscated classes in every release. This module does not tr
 runtime: it is bound to one build and says so.
 
 - **Exact target.** `target/current/target-release.lock.yml` records the hashes of YouTube
-  `21.37.42` and its thirty bound Endpoints. Each Endpoint is a `BindingSpec` in
+  `21.38.130` and its thirty bound Endpoints. Each Endpoint is a `BindingSpec` in
   `source/80_bindings/`, found with DexKit in the separate Binding Laboratory app. DexKit never
   ships in the module.
 - **Atomic installation.** The controller installs every hook or none. A failed binding rolls back
@@ -135,7 +135,7 @@ runtime: it is bound to one build and says so.
 | | |
 |---|---|
 | **Android** | 12L or later (API 32+), built against API 37 |
-| **YouTube** | `com.google.android.youtube` `21.37.42`, from Google Play |
+| **YouTube** | `com.google.android.youtube` `21.38.130`, from Google Play |
 | **Device** | Tested on a Pixel 8 Pro |
 | **Framework** | [Vector](https://github.com/JingMatrix/Vector) v2.2, or any framework implementing libxposed API 102 |
 | **Root** | Only what your Xposed framework needs |
@@ -205,7 +205,7 @@ source/
   40_manager/      the settings page and its entry
   50_diag/         hook compatibility diagnostics
   70_features/     Features and their Effects
-  80_bindings/     exact 21.37.42 BindingSpecs
+  80_bindings/     exact 21.38.130 BindingSpecs
 toolchain/         evaluator, validator, backend, Binding Laboratory
 contracts/         lifecycle, configuration, binding and testing contracts
 architecture/      authority map
