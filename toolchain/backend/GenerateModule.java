@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
@@ -22,15 +21,16 @@ public final class GenerateModule implements Opcodes {
     static final String SNAP = P + "ConfigSnapshot";
     private static final String LISTENER = P + "ConfigListener";
     private static final String CTRL = P + "HookController";
-    private static final String DIAG = DiagnosticsGenerator.STATUS;
-    private static final String IDENTITY = P + "TargetIdentity";
-    private static final String SEEK = P + "SeekPort";
-    private static final String STORE = P + "SegmentStore";
+    private static final String DIAG = StatusTransportGenerator.STATUS;
+    static final String SEEK = P + "SeekPort";
+    static final String STORE = P + "SegmentStore";
+    static final String STATE = P + "StateSlots";
     private static final String FETCH = P + "SegmentFetch";
-    private static final String LITHO = P + "LithoAdPort";
-    private static final String SHORTS = ShortsFeedGenerator.NAME;
+    private static final String PROGRAM_MEMBERS = ProgramMembersGenerator.NAME;
     private static final String XPOSED = "io/github/libxposed/api/XposedModule";
     private static final String PARAM = "io/github/libxposed/api/XposedModuleInterface$PackageReadyParam";
+    private static final String HOT_RELOADING = "io/github/libxposed/api/XposedModuleInterface$HotReloadingParam";
+    private static final String HOT_RELOADED = "io/github/libxposed/api/XposedModuleInterface$HotReloadedParam";
     static final String CHAIN = "io/github/libxposed/api/XposedInterface$Chain";
     private static final String HOOKER = "io/github/libxposed/api/XposedInterface$Hooker";
     private static final String BUILDER = "io/github/libxposed/api/XposedInterface$HookBuilder";
@@ -39,38 +39,33 @@ public final class GenerateModule implements Opcodes {
     private static final String PREFS = "android/content/SharedPreferences";
     private static final String PREF_LISTENER = PREFS + "$OnSharedPreferenceChangeListener";
     static final String LOG_TAG = "YtmMalbolge";
+    static final String RESOLVER = "io/github/mrxsin/ytmalbolge/RuntimeResolver";
     private static final String CLASS_FOR_NAME = "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;";
     /** Seek targets closer than this to a segment end are left to normal playback. */
-    private static final int SEGMENT_END_MARGIN_MS = 250;
-    private static final int MAX_SEGMENT_RESPONSE_BYTES = 1 << 20;
 
     record Config(String group, String key, boolean fallback) {}
     record Member(String kind, String owner, String name, String descriptor, int access,
-                          String superclass) {
+                          String superclass, int opcodeCount) {
         boolean constructor() { return kind.equals("CONSTRUCTOR"); }
     }
-    record Hook(Member member, String handler, int configIndex, String hookId, List<String> arguments) {}
+    record Hook(Member member, int configIndex, String hookId, String group, int startup,
+                List<String> arguments) {}
     private record Seek(Member member, String constant) {}
     private record Category(String name, int configIndex) {}
-    private record Segments(String origin, int prefixLength, int connectMs, int readMs, String query,
-                            String actionType, List<Category> categories) {}
+    private record Segments(String origin, String path, int prefixLength, int connectMs, int readMs,
+                            int maxBytes, int successStatus, String digest, String query,
+                            String videoKey, String listKey, String actionKey, String categoryKey,
+                            String boundsKey, String actionValue, int scale, boolean useCaches,
+                            int retries, List<Category> categories) {}
     record Diagnostic(String id, String transport, String failureMode, String targetPackage,
-                      String screenTitle, String copyLabel) {}
-    private record Plan(String hash, boolean active, List<Config> configs, List<Hook> hooks, Seek seek,
-                        Segments segments, SettingsGenerator.Settings settings, Diagnostic diagnostic) {}
-
-    /** One generated Effect handler body; control falls through to {@code chain.proceed()}. */
-    interface Handler { void emit(MethodVisitor m, Hook hook); }
-
-    private static final Map<String, Handler> HANDLERS = Map.of(
-            "hide_view", GenerateModule::hideView,
-            "filter_litho_ads", GenerateModule::filterLithoAds,
-            "skip_void", GenerateModule::skipVoid,
-            "capture_receiver", GenerateModule::captureReceiver,
-            "observe_video_id", GenerateModule::observeVideoId,
-            "filter_shorts_ads", GenerateModule::filterShortsAds,
-            "inject_settings_entry", SettingsGenerator::injectEntry,
-            "skip_segments", GenerateModule::skipSegments);
+                       String screenTitle, String copyLabel, String checkingState, String checkingText,
+                       String readyState, String readyText, String degradedState, String degradedText,
+                       String failedState, String waitingText, String staleState, String staleText,
+                       String readyDisplayText, String unavailableOpenText, String unavailableDisabledText,
+                       String readFailedText, String reportTitle, String unavailablePrefix) {}
+    private record Plan(String hash, List<Config> configs, List<Hook> hooks, Seek seek,
+                        Segments segments, UiModelGenerator.Settings settings, Diagnostic diagnostic,
+                        List<Member> programMembers, int[] resolverWeights) {}
 
     private GenerateModule() {}
 
@@ -147,42 +142,18 @@ public final class GenerateModule implements Opcodes {
      */
     static void resolveMember(MethodVisitor m, Member b, int loaderLocal,
                                       int classLocal, int targetLocal, String failure) {
-        Label shapeFail = new Label(), next = new Label();
-        loadClass(m, b.owner(), loaderLocal); m.visitVarInsn(ASTORE, classLocal);
-        m.visitVarInsn(ALOAD, classLocal);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Class", "getSuperclass", "()Ljava/lang/Class;", false);
-        // Do not emit a superclass class literal here. The generated module
-        // loader cannot resolve target-only obfuscated classes; compare the
-        // runtime name using the target class loader instead.
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Class", "getName", "()Ljava/lang/String;", false);
-        m.visitLdcInsn(b.superclass().replace('/', '.'));
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
-        m.visitJumpInsn(IFEQ, shapeFail);
-        m.visitVarInsn(ALOAD, classLocal);
-        if (b.constructor()) {
-            parameterClasses(m, b.descriptor(), loaderLocal);
-            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Class", "getDeclaredConstructor",
-                    "([Ljava/lang/Class;)Ljava/lang/reflect/Constructor;", false);
-            m.visitVarInsn(ASTORE, targetLocal);
-            m.visitVarInsn(ALOAD, targetLocal);
-            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Constructor", "getModifiers", "()I", false);
-        } else {
-            m.visitLdcInsn(b.name());
-            parameterClasses(m, b.descriptor(), loaderLocal);
-            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Class", "getDeclaredMethod",
-                    "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;", false);
-            m.visitVarInsn(ASTORE, targetLocal);
-            m.visitVarInsn(ALOAD, targetLocal); m.visitTypeInsn(CHECKCAST, "java/lang/reflect/Method");
-            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Method", "getReturnType", "()Ljava/lang/Class;", false);
-            typeClass(m, Type.getReturnType(b.descriptor()), loaderLocal);
-            m.visitJumpInsn(IF_ACMPNE, shapeFail);
-            m.visitVarInsn(ALOAD, targetLocal); m.visitTypeInsn(CHECKCAST, "java/lang/reflect/Method");
-            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Method", "getModifiers", "()I", false);
-        }
-        integer(m, 29); m.visitInsn(IAND); integer(m, b.access());
-        m.visitJumpInsn(IF_ICMPEQ, next);
-        m.visitLabel(shapeFail); throwState(m, failure);
-        m.visitLabel(next);
+        Label resolved = new Label();
+        m.visitVarInsn(ALOAD, loaderLocal); m.visitLdcInsn(b.kind()); m.visitLdcInsn(b.owner());
+        m.visitLdcInsn(b.name()); m.visitLdcInsn(b.descriptor()); integer(m, b.access());
+        m.visitLdcInsn(b.superclass()); integer(m, b.opcodeCount());
+        m.visitMethodInsn(INVOKESTATIC, RESOLVER, "executable",
+                "(Ljava/lang/ClassLoader;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;I)Ljava/lang/reflect/Executable;",
+                false);
+        m.visitInsn(DUP); m.visitJumpInsn(IFNONNULL, resolved); m.visitInsn(POP); throwState(m, failure);
+        m.visitLabel(resolved); m.visitVarInsn(ASTORE, targetLocal);
+        m.visitVarInsn(ALOAD, targetLocal);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Executable", "getDeclaringClass", "()Ljava/lang/Class;", false);
+        m.visitVarInsn(ASTORE, classLocal);
     }
 
     // region Configuration
@@ -235,90 +206,52 @@ public final class GenerateModule implements Opcodes {
 
     // endregion
 
-    // region Effect handlers
-
-    private static void hideView(MethodVisitor m, Hook hook) {
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "getThisObject", "()Ljava/lang/Object;", true);
-        m.visitTypeInsn(CHECKCAST, "android/view/View");
-        integer(m, 8);
-        m.visitMethodInsn(INVOKEVIRTUAL, "android/view/View", "setVisibility", "(I)V", false);
-    }
-    private static void filterLithoAds(MethodVisitor m, Hook hook) {
-        Label noMatch = new Label();
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKESTATIC, LITHO, "filter", "(L" + CHAIN + ";)Ljava/lang/Object;", false);
-        m.visitInsn(DUP);
-        m.visitJumpInsn(IFNULL, noMatch);
-        m.visitInsn(ARETURN);
-        m.visitLabel(noMatch);
-        m.visitInsn(POP);
-    }
-    private static void skipVoid(MethodVisitor m, Hook hook) {
-        m.visitInsn(ACONST_NULL); m.visitInsn(ARETURN);
-    }
-
-    private static void filterShortsAds(MethodVisitor m, Hook hook) {
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKESTATIC, SHORTS, "filter", "(L" + CHAIN + ";)Ljava/lang/Object;", false);
-        m.visitInsn(ARETURN);
-    }
-    private static void captureReceiver(MethodVisitor m, Hook hook) {
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "proceed", "()Ljava/lang/Object;", true);
-        m.visitVarInsn(ASTORE, 2);
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "getThisObject", "()Ljava/lang/Object;", true);
-        m.visitFieldInsn(PUTSTATIC, SEEK, "receiver", "Ljava/lang/Object;");
-        m.visitVarInsn(ALOAD, 2); m.visitInsn(ARETURN);
-    }
-    private static void observeVideoId(MethodVisitor m, Hook hook) {
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "proceed", "()Ljava/lang/Object;", true);
-        m.visitVarInsn(ASTORE, 2);
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "getThisObject", "()Ljava/lang/Object;", true);
-        m.visitMethodInsn(INVOKESTATIC, STORE, "onStage", "(Ljava/lang/Object;)V", false);
-        m.visitVarInsn(ALOAD, 2); m.visitInsn(ARETURN);
-    }
-    /** Cold binding of the private field in which the observed member stores the video ID. */
-    private static void bindVideoField(MethodVisitor m, Hook hook, int classLocal) {
-        m.visitVarInsn(ALOAD, classLocal); m.visitLdcInsn(hook.arguments().get(0));
+    /** Cold binding of one program-declared field into a generic state slot. */
+    private static void bindDeclaredField(MethodVisitor m, Hook hook, int classLocal, int[] binding) {
+        m.visitVarInsn(ALOAD, classLocal); m.visitLdcInsn(AotHookCompiler.constant(hook, binding[0]));
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Class", "getDeclaredField",
                 "(Ljava/lang/String;)Ljava/lang/reflect/Field;", false);
         m.visitInsn(DUP);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Field", "getType", "()Ljava/lang/Class;", false);
-        m.visitLdcInsn(Type.getType("Ljava/lang/String;"));
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Class", "getName", "()Ljava/lang/String;", false);
+        m.visitLdcInsn(AotHookCompiler.constant(hook, binding[1]));
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
         Label typed = new Label();
-        m.visitJumpInsn(IF_ACMPEQ, typed);
+        m.visitJumpInsn(IFNE, typed);
         throwState(m, "binding shape mismatch: " + hook.hookId());
         m.visitLabel(typed);
         m.visitInsn(DUP); m.visitInsn(ICONST_1);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Field", "setAccessible", "(Z)V", false);
-        m.visitFieldInsn(PUTSTATIC, STORE, "videoField", "Ljava/lang/reflect/Field;");
-    }
-    private static void skipSegments(MethodVisitor m, Hook hook) {
-        m.visitVarInsn(ALOAD, 1); integer(m, Integer.parseInt(hook.arguments().get(0)));
-        m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "getArg", "(I)Ljava/lang/Object;", true);
-        m.visitTypeInsn(CHECKCAST, "java/lang/Long");
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Long", "longValue", "()J", false);
-        m.visitMethodInsn(INVOKESTATIC, STORE, "onProgress", "(J)V", false);
+        integer(m, binding[2]); m.visitInsn(SWAP);
+        m.visitMethodInsn(INVOKESTATIC, STATE, "set", "(ILjava/lang/Object;)V", false);
     }
     private static void hooker(Path root, int index, Hook hook) throws IOException {
-        Handler handler = HANDLERS.get(hook.handler());
-        if (handler == null) throw new IllegalArgumentException("unsupported handler " + hook.handler());
-        String name = P + "EffectHooker" + index;
+        String name = P + "ProgramHooker" + index;
         ClassWriter w = writer(name, "java/lang/Object", HOOKER);
         ctor(w, "java/lang/Object");
         MethodVisitor m = w.visitMethod(ACC_PUBLIC, "intercept", "(L" + CHAIN + ";)Ljava/lang/Object;",
                 null, new String[] {"java/lang/Throwable"});
-        m.visitCode(); Label proceed = new Label();
+        m.visitCode(); m.visitInsn(ACONST_NULL); m.visitVarInsn(ASTORE, 30);
+        m.visitInsn(ICONST_0); m.visitVarInsn(ISTORE, 31); Label proceed = new Label();
+        boolean failOpen = AotHookCompiler.failOpen(hook);
+        Label programStart = new Label(), programEnd = new Label(), programFail = new Label();
+        if (failOpen) m.visitTryCatchBlock(programStart, programEnd, programFail, "java/lang/Throwable");
         if (hook.configIndex() >= 0) {
             integer(m, hook.configIndex());
             m.visitMethodInsn(INVOKESTATIC, SNAP, "enabled", "(I)Z", false);
             m.visitJumpInsn(IFEQ, proceed);
         }
-        handler.emit(m, hook);
+        if (failOpen) m.visitLabel(programStart);
+        AotHookCompiler.emit(m, hook);
+        if (failOpen) {
+            m.visitLabel(programEnd); m.visitJumpInsn(GOTO, proceed);
+            Label notProceeded = new Label(), completed = new Label();
+            m.visitLabel(programFail); m.visitVarInsn(ASTORE, 29); m.visitVarInsn(ILOAD, 31);
+            m.visitJumpInsn(IFEQ, notProceeded); m.visitVarInsn(ILOAD, 31); m.visitInsn(ICONST_2);
+            m.visitJumpInsn(IF_ICMPEQ, completed); m.visitVarInsn(ALOAD, 29); m.visitInsn(ATHROW);
+            m.visitLabel(completed); m.visitVarInsn(ALOAD, 30); m.visitInsn(ARETURN);
+            m.visitLabel(notProceeded); m.visitJumpInsn(GOTO, proceed);
+        }
         m.visitLabel(proceed); m.visitVarInsn(ALOAD, 1);
         m.visitMethodInsn(INVOKEINTERFACE, CHAIN, "proceed", "()Ljava/lang/Object;", true);
         m.visitInsn(ARETURN); m.visitMaxs(0, 0); m.visitEnd();
@@ -329,6 +262,33 @@ public final class GenerateModule implements Opcodes {
 
     // region Segment skipping runtime
 
+    /** Small generic volatile object store used by AOT programs and platform bridges. */
+    private static void stateSlots(Path root, int count) throws IOException {
+        ClassWriter w = writer(STATE, "java/lang/Object");
+        for (int index = 0; index < count; index++) {
+            w.visitField(ACC_PRIVATE | ACC_STATIC | ACC_VOLATILE, "s" + index,
+                    "Ljava/lang/Object;", null, null).visitEnd();
+        }
+        MethodVisitor m = w.visitMethod(ACC_STATIC, "get", "(I)Ljava/lang/Object;", null, null);
+        m.visitCode();
+        for (int index = 0; index < count; index++) {
+            Label next = new Label(); m.visitVarInsn(ILOAD, 0); integer(m, index);
+            m.visitJumpInsn(IF_ICMPNE, next); m.visitFieldInsn(GETSTATIC, STATE, "s" + index, "Ljava/lang/Object;");
+            m.visitInsn(ARETURN); m.visitLabel(next);
+        }
+        throwState(m, "state slot index"); m.visitMaxs(0, 0); m.visitEnd();
+        m = w.visitMethod(ACC_STATIC, "set", "(ILjava/lang/Object;)V", null, null);
+        m.visitCode();
+        for (int index = 0; index < count; index++) {
+            Label next = new Label(); m.visitVarInsn(ILOAD, 0); integer(m, index);
+            m.visitJumpInsn(IF_ICMPNE, next); m.visitVarInsn(ALOAD, 1);
+            m.visitFieldInsn(PUTSTATIC, STATE, "s" + index, "Ljava/lang/Object;");
+            m.visitInsn(RETURN); m.visitLabel(next);
+        }
+        throwState(m, "state slot index"); m.visitMaxs(0, 0); m.visitEnd();
+        save(root, STATE, w);
+    }
+
     /** Holds the bound player receiver and seek member; invoked only on the player's thread. */
     private static void seekPort(Path root, Seek seek) throws IOException {
         Member b = seek.member();
@@ -338,7 +298,6 @@ public final class GenerateModule implements Opcodes {
             throw new IllegalArgumentException("unsupported seek shape");
         }
         ClassWriter w = writer(SEEK, "java/lang/Object");
-        w.visitField(ACC_STATIC | ACC_VOLATILE, "receiver", "Ljava/lang/Object;", null, null).visitEnd();
         w.visitField(ACC_PRIVATE | ACC_STATIC | ACC_VOLATILE, "method", "Ljava/lang/reflect/Method;", null, null).visitEnd();
         w.visitField(ACC_PRIVATE | ACC_STATIC | ACC_VOLATILE, "source", "Ljava/lang/Object;", null, null).visitEnd();
 
@@ -358,7 +317,8 @@ public final class GenerateModule implements Opcodes {
         m.visitCode();
         Label start = new Label(), end = new Label(), fail = new Label(), missing = new Label();
         m.visitTryCatchBlock(start, end, fail, "java/lang/Throwable");
-        m.visitFieldInsn(GETSTATIC, SEEK, "receiver", "Ljava/lang/Object;"); m.visitVarInsn(ASTORE, 2);
+        integer(m, 0); m.visitMethodInsn(INVOKESTATIC, STATE, "get", "(I)Ljava/lang/Object;", false);
+        m.visitVarInsn(ASTORE, 2);
         m.visitVarInsn(ALOAD, 2); m.visitJumpInsn(IFNULL, missing);
         m.visitLabel(start);
         m.visitFieldInsn(GETSTATIC, SEEK, "method", "Ljava/lang/reflect/Method;");
@@ -390,75 +350,8 @@ public final class GenerateModule implements Opcodes {
      */
     private static void segmentStore(Path root) throws IOException {
         ClassWriter w = writer(STORE, "java/lang/Object");
-        w.visitField(ACC_PRIVATE | ACC_STATIC | ACC_VOLATILE, "videoId", "Ljava/lang/String;", null, null).visitEnd();
-        w.visitField(ACC_PRIVATE | ACC_STATIC | ACC_VOLATILE, "segments", "[J", null, null).visitEnd();
-        MethodVisitor m = w.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
-        m.visitCode(); m.visitInsn(ICONST_0); m.visitIntInsn(NEWARRAY, T_LONG);
-        m.visitFieldInsn(PUTSTATIC, STORE, "segments", "[J");
-        m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
-
-        w.visitField(ACC_STATIC | ACC_VOLATILE, "videoField", "Ljava/lang/reflect/Field;", null, null).visitEnd();
-
-        // onStage(Object owner): reads the bound video ID field after the observed member ran.
-        m = w.visitMethod(ACC_STATIC, "onStage", "(Ljava/lang/Object;)V", null, new String[] {"java/lang/Throwable"});
+        MethodVisitor m = w.visitMethod(ACC_STATIC | ACC_SYNCHRONIZED, "refresh", "(Ljava/lang/String;)V", null, null);
         m.visitCode();
-        Label same = new Label();
-        m.visitFieldInsn(GETSTATIC, STORE, "videoField", "Ljava/lang/reflect/Field;"); m.visitVarInsn(ALOAD, 0);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/reflect/Field", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
-        m.visitTypeInsn(CHECKCAST, "java/lang/String"); m.visitVarInsn(ASTORE, 1);
-        m.visitVarInsn(ALOAD, 1); m.visitJumpInsn(IFNULL, same);
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "length", "()I", false);
-        integer(m, 11); m.visitJumpInsn(IF_ICMPNE, same);
-        m.visitVarInsn(ALOAD, 1); m.visitFieldInsn(GETSTATIC, STORE, "videoId", "Ljava/lang/String;");
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
-        m.visitJumpInsn(IFNE, same);
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKESTATIC, STORE, "request", "(Ljava/lang/String;)V", false);
-        m.visitLabel(same); m.visitInsn(RETURN);
-        m.visitMaxs(0, 0); m.visitEnd();
-
-        // onProgress(long position): locals 0-1 position, 2 table, 3 index. No allocation.
-        m = w.visitMethod(ACC_STATIC, "onProgress", "(J)V", null, null);
-        m.visitCode();
-        Label loop = new Label(), next = new Label(), done = new Label();
-        m.visitFieldInsn(GETSTATIC, STORE, "segments", "[J"); m.visitVarInsn(ASTORE, 2);
-        m.visitInsn(ICONST_0); m.visitVarInsn(ISTORE, 3);
-        m.visitLabel(loop);
-        m.visitVarInsn(ILOAD, 3); m.visitVarInsn(ALOAD, 2); m.visitInsn(ARRAYLENGTH);
-        m.visitJumpInsn(IF_ICMPGE, done);
-        // skipped flag
-        m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ILOAD, 3); m.visitInsn(ICONST_3); m.visitInsn(IADD);
-        m.visitInsn(LALOAD); m.visitInsn(LCONST_0); m.visitInsn(LCMP); m.visitJumpInsn(IFNE, next);
-        // position < start
-        m.visitVarInsn(LLOAD, 0); m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ILOAD, 3); m.visitInsn(LALOAD);
-        m.visitInsn(LCMP); m.visitJumpInsn(IFLT, next);
-        // position + margin >= end
-        m.visitVarInsn(LLOAD, 0); m.visitLdcInsn((long) SEGMENT_END_MARGIN_MS); m.visitInsn(LADD);
-        m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ILOAD, 3); m.visitInsn(ICONST_1); m.visitInsn(IADD);
-        m.visitInsn(LALOAD); m.visitInsn(LCMP); m.visitJumpInsn(IFGE, next);
-        // category enabled
-        m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ILOAD, 3); m.visitInsn(ICONST_2); m.visitInsn(IADD);
-        m.visitInsn(LALOAD); m.visitInsn(L2I);
-        m.visitMethodInsn(INVOKESTATIC, SNAP, "enabled", "(I)Z", false);
-        m.visitJumpInsn(IFEQ, next);
-        m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ILOAD, 3); m.visitInsn(ICONST_3); m.visitInsn(IADD);
-        m.visitInsn(LCONST_1); m.visitInsn(LASTORE);
-        m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ILOAD, 3); m.visitInsn(ICONST_1); m.visitInsn(IADD);
-        m.visitInsn(LALOAD);
-        m.visitMethodInsn(INVOKESTATIC, SEEK, "seek", "(J)Z", false);
-        m.visitJumpInsn(IFEQ, done);
-        log(m, "i", "segment skipped");
-        m.visitInsn(RETURN);
-        m.visitLabel(next); m.visitIincInsn(3, 4); m.visitJumpInsn(GOTO, loop);
-        m.visitLabel(done); m.visitInsn(RETURN);
-        m.visitMaxs(0, 0); m.visitEnd();
-
-        m = w.visitMethod(ACC_PRIVATE | ACC_STATIC | ACC_SYNCHRONIZED, "request", "(Ljava/lang/String;)V", null, null);
-        m.visitCode();
-        m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(PUTSTATIC, STORE, "videoId", "Ljava/lang/String;");
-        m.visitInsn(ICONST_0); m.visitIntInsn(NEWARRAY, T_LONG);
-        m.visitFieldInsn(PUTSTATIC, STORE, "segments", "[J");
         m.visitTypeInsn(NEW, "java/lang/Thread"); m.visitInsn(DUP);
         m.visitTypeInsn(NEW, FETCH); m.visitInsn(DUP); m.visitVarInsn(ALOAD, 0);
         m.visitMethodInsn(INVOKESPECIAL, FETCH, "<init>", "(Ljava/lang/String;)V", false);
@@ -472,10 +365,12 @@ public final class GenerateModule implements Opcodes {
 
         m = w.visitMethod(ACC_STATIC | ACC_SYNCHRONIZED, "publish", "(Ljava/lang/String;[J)V", null, null);
         m.visitCode(); Label stale = new Label();
-        m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(GETSTATIC, STORE, "videoId", "Ljava/lang/String;");
+        m.visitVarInsn(ALOAD, 0); integer(m, 3);
+        m.visitMethodInsn(INVOKESTATIC, STATE, "get", "(I)Ljava/lang/Object;", false);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
         m.visitJumpInsn(IFEQ, stale);
-        m.visitVarInsn(ALOAD, 1); m.visitFieldInsn(PUTSTATIC, STORE, "segments", "[J");
+        integer(m, 1); m.visitVarInsn(ALOAD, 1);
+        m.visitMethodInsn(INVOKESTATIC, STATE, "set", "(ILjava/lang/Object;)V", false);
         m.visitLabel(stale); m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
         save(root, STORE, w);
     }
@@ -485,6 +380,8 @@ public final class GenerateModule implements Opcodes {
         if (s.prefixLength() < 4 || s.prefixLength() > 32 || s.prefixLength() % 2 != 0) {
             throw new IllegalArgumentException("hash prefix length");
         }
+        if (s.maxBytes() < 1 || s.connectMs() < 1 || s.readMs() < 1 || s.scale() < 1
+                || s.retries() != 0) throw new IllegalArgumentException("unsupported load policy");
         ClassWriter w = writer(FETCH, "java/lang/Object", "java/lang/Runnable");
         w.visitField(ACC_PRIVATE | ACC_FINAL, "id", "Ljava/lang/String;", null, null).visitEnd();
         MethodVisitor m = w.visitMethod(0, "<init>", "(Ljava/lang/String;)V", null, null);
@@ -512,10 +409,12 @@ public final class GenerateModule implements Opcodes {
         m.visitCode();
         Label start = new Label(), end = new Label(), fail = new Label(), exit = new Label();
         m.visitTryCatchBlock(start, end, fail, "java/lang/Throwable");
+        m.visitInsn(ACONST_NULL); m.visitVarInsn(ASTORE, 6);
+        m.visitInsn(ACONST_NULL); m.visitVarInsn(ASTORE, 7);
         m.visitLabel(start);
         m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(GETFIELD, FETCH, "id", "Ljava/lang/String;");
         m.visitVarInsn(ASTORE, 1);
-        m.visitLdcInsn("SHA-256");
+        m.visitLdcInsn(s.digest());
         m.visitMethodInsn(INVOKESTATIC, "java/security/MessageDigest", "getInstance",
                 "(Ljava/lang/String;)Ljava/security/MessageDigest;", false);
         m.visitVarInsn(ALOAD, 1);
@@ -524,7 +423,7 @@ public final class GenerateModule implements Opcodes {
         m.visitMethodInsn(INVOKEVIRTUAL, "java/security/MessageDigest", "digest", "([B)[B", false);
         m.visitVarInsn(ASTORE, 2);
         m.visitTypeInsn(NEW, "java/lang/StringBuilder"); m.visitInsn(DUP);
-        m.visitLdcInsn(s.origin() + "/api/skipSegments/");
+        m.visitLdcInsn(s.origin() + s.path());
         m.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V", false);
         m.visitVarInsn(ASTORE, 3);
         Label hexLoop = new Label(), hexDone = new Label();
@@ -557,12 +456,12 @@ public final class GenerateModule implements Opcodes {
         m.visitMethodInsn(INVOKEVIRTUAL, "java/net/HttpURLConnection", "setConnectTimeout", "(I)V", false);
         m.visitVarInsn(ALOAD, 6); integer(m, s.readMs());
         m.visitMethodInsn(INVOKEVIRTUAL, "java/net/HttpURLConnection", "setReadTimeout", "(I)V", false);
-        m.visitVarInsn(ALOAD, 6); m.visitInsn(ICONST_0);
+        m.visitVarInsn(ALOAD, 6); m.visitInsn(s.useCaches() ? ICONST_1 : ICONST_0);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/net/HttpURLConnection", "setUseCaches", "(Z)V", false);
         Label ok = new Label();
         m.visitVarInsn(ALOAD, 6);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/net/HttpURLConnection", "getResponseCode", "()I", false);
-        integer(m, 200); m.visitJumpInsn(IF_ICMPEQ, ok);
+        integer(m, s.successStatus()); m.visitJumpInsn(IF_ICMPEQ, ok);
         m.visitVarInsn(ALOAD, 6);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/net/HttpURLConnection", "disconnect", "()V", false);
         m.visitJumpInsn(GOTO, exit);
@@ -583,7 +482,7 @@ public final class GenerateModule implements Opcodes {
         m.visitMethodInsn(INVOKEVIRTUAL, "java/io/ByteArrayOutputStream", "write", "([BII)V", false);
         m.visitVarInsn(ALOAD, 8);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/io/ByteArrayOutputStream", "size", "()I", false);
-        m.visitLdcInsn(MAX_SEGMENT_RESPONSE_BYTES); m.visitJumpInsn(IF_ICMPLE, readLoop);
+        m.visitLdcInsn(s.maxBytes()); m.visitJumpInsn(IF_ICMPLE, readLoop);
         throwState(m, "segment response too large");
         m.visitLabel(readDone);
         m.visitVarInsn(ALOAD, 7); m.visitMethodInsn(INVOKEVIRTUAL, "java/io/InputStream", "close", "()V", false);
@@ -604,11 +503,11 @@ public final class GenerateModule implements Opcodes {
         m.visitVarInsn(ALOAD, 11); m.visitVarInsn(ILOAD, 12);
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONArray", "getJSONObject", "(I)Lorg/json/JSONObject;", false);
         m.visitVarInsn(ASTORE, 13);
-        m.visitVarInsn(ALOAD, 1); m.visitVarInsn(ALOAD, 13); m.visitLdcInsn("videoID");
+        m.visitVarInsn(ALOAD, 1); m.visitVarInsn(ALOAD, 13); m.visitLdcInsn(s.videoKey());
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONObject", "optString", "(Ljava/lang/String;)Ljava/lang/String;", false);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
         m.visitJumpInsn(IFEQ, videoNext);
-        m.visitVarInsn(ALOAD, 13); m.visitLdcInsn("segments");
+        m.visitVarInsn(ALOAD, 13); m.visitLdcInsn(s.listKey());
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONObject", "getJSONArray", "(Ljava/lang/String;)Lorg/json/JSONArray;", false);
         m.visitVarInsn(ASTORE, 14);
         m.visitVarInsn(ALOAD, 14);
@@ -624,22 +523,36 @@ public final class GenerateModule implements Opcodes {
         m.visitVarInsn(ALOAD, 14); m.visitVarInsn(ILOAD, 17);
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONArray", "getJSONObject", "(I)Lorg/json/JSONObject;", false);
         m.visitVarInsn(ASTORE, 18);
-        m.visitLdcInsn(s.actionType()); m.visitVarInsn(ALOAD, 18); m.visitLdcInsn("actionType");
+        m.visitLdcInsn(s.actionValue()); m.visitVarInsn(ALOAD, 18); m.visitLdcInsn(s.actionKey());
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONObject", "optString", "(Ljava/lang/String;)Ljava/lang/String;", false);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
         m.visitJumpInsn(IFEQ, segmentNext);
-        m.visitVarInsn(ALOAD, 18); m.visitLdcInsn("category");
+        m.visitVarInsn(ALOAD, 18); m.visitLdcInsn(s.categoryKey());
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONObject", "optString", "(Ljava/lang/String;)Ljava/lang/String;", false);
         m.visitMethodInsn(INVOKESTATIC, FETCH, "category", "(Ljava/lang/String;)I", false);
         m.visitVarInsn(ISTORE, 19); m.visitVarInsn(ILOAD, 19); m.visitJumpInsn(IFLT, segmentNext);
-        m.visitVarInsn(ALOAD, 18); m.visitLdcInsn("segment");
+        m.visitVarInsn(ALOAD, 18); m.visitLdcInsn(s.boundsKey());
         m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONObject", "getJSONArray", "(Ljava/lang/String;)Lorg/json/JSONArray;", false);
         m.visitVarInsn(ASTORE, 20);
+        m.visitVarInsn(ALOAD, 20);
+        m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONArray", "length", "()I", false);
+        m.visitInsn(ICONST_2); m.visitJumpInsn(IF_ICMPNE, segmentNext);
         for (int bound = 0; bound < 2; bound++) {
-            m.visitVarInsn(ALOAD, 15); m.visitVarInsn(ILOAD, 16); integer(m, bound); m.visitInsn(IADD);
             m.visitVarInsn(ALOAD, 20); integer(m, bound);
             m.visitMethodInsn(INVOKEVIRTUAL, "org/json/JSONArray", "getDouble", "(I)D", false);
-            m.visitLdcInsn(1000.0); m.visitInsn(DMUL); m.visitInsn(D2L); m.visitInsn(LASTORE);
+            m.visitVarInsn(DSTORE, 22 + bound * 2);
+            m.visitVarInsn(DLOAD, 22 + bound * 2);
+            m.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "isFinite", "(D)Z", false);
+            m.visitJumpInsn(IFEQ, segmentNext);
+        }
+        m.visitVarInsn(DLOAD, 22); m.visitInsn(DCONST_0); m.visitInsn(DCMPL);
+        m.visitJumpInsn(IFLT, segmentNext);
+        m.visitVarInsn(DLOAD, 24); m.visitVarInsn(DLOAD, 22); m.visitInsn(DCMPL);
+        m.visitJumpInsn(IFLE, segmentNext);
+        for (int bound = 0; bound < 2; bound++) {
+            m.visitVarInsn(ALOAD, 15); m.visitVarInsn(ILOAD, 16); integer(m, bound); m.visitInsn(IADD);
+            m.visitVarInsn(DLOAD, 22 + bound * 2);
+            m.visitLdcInsn((double) s.scale()); m.visitInsn(DMUL); m.visitInsn(D2L); m.visitInsn(LASTORE);
         }
         m.visitVarInsn(ALOAD, 15); m.visitVarInsn(ILOAD, 16); m.visitInsn(ICONST_2); m.visitInsn(IADD);
         m.visitVarInsn(ILOAD, 19); m.visitInsn(I2L); m.visitInsn(LASTORE);
@@ -663,6 +576,11 @@ public final class GenerateModule implements Opcodes {
         m.visitLabel(end);
         m.visitLabel(exit); m.visitInsn(RETURN);
         m.visitLabel(fail); m.visitVarInsn(ASTORE, 21);
+        Label noConnection = new Label();
+        m.visitVarInsn(ALOAD, 6); m.visitJumpInsn(IFNULL, noConnection);
+        m.visitVarInsn(ALOAD, 6);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/net/HttpURLConnection", "disconnect", "()V", false);
+        m.visitLabel(noConnection);
         m.visitLdcInsn(LOG_TAG);
         m.visitTypeInsn(NEW, "java/lang/StringBuilder"); m.visitInsn(DUP);
         m.visitLdcInsn("segment request failed: ");
@@ -681,229 +599,335 @@ public final class GenerateModule implements Opcodes {
 
     // endregion
 
-    // region Target identity, hook ownership and entry
-
-    private static void identity(Path root, String hash) throws IOException {
-        if (!hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("target hash");
-        ClassWriter w = writer(IDENTITY, "java/lang/Object");
-        MethodVisitor m = w.visitMethod(ACC_PUBLIC | ACC_STATIC, "matches",
-                "(Landroid/content/pm/ApplicationInfo;)Z", null, null);
-        m.visitCode(); Label start = new Label(), end = new Label(), fail = new Label();
-        Label loop = new Label(), done = new Label();
-        m.visitTryCatchBlock(start, end, fail, "java/lang/Throwable");
-        m.visitInsn(ACONST_NULL); m.visitVarInsn(ASTORE, 2);
-        m.visitLabel(start); m.visitLdcInsn("SHA-256");
-        m.visitMethodInsn(INVOKESTATIC, "java/security/MessageDigest", "getInstance",
-                "(Ljava/lang/String;)Ljava/security/MessageDigest;", false);
-        m.visitVarInsn(ASTORE, 1);
-        m.visitTypeInsn(NEW, "java/io/FileInputStream"); m.visitInsn(DUP);
-        m.visitVarInsn(ALOAD, 0);
-        m.visitFieldInsn(GETFIELD, "android/content/pm/ApplicationInfo", "sourceDir", "Ljava/lang/String;");
-        m.visitMethodInsn(INVOKESPECIAL, "java/io/FileInputStream", "<init>", "(Ljava/lang/String;)V", false);
-        m.visitVarInsn(ASTORE, 2);
-        integer(m, 8192); m.visitIntInsn(NEWARRAY, T_BYTE); m.visitVarInsn(ASTORE, 3);
-        m.visitLabel(loop); m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ALOAD, 3);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/io/FileInputStream", "read", "([B)I", false);
-        m.visitVarInsn(ISTORE, 4); m.visitVarInsn(ILOAD, 4); m.visitJumpInsn(IFLT, done);
-        m.visitVarInsn(ALOAD, 1); m.visitVarInsn(ALOAD, 3); m.visitInsn(ICONST_0);
-        m.visitVarInsn(ILOAD, 4);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/security/MessageDigest", "update", "([BII)V", false);
-        m.visitJumpInsn(GOTO, loop);
-        m.visitLabel(done); m.visitVarInsn(ALOAD, 2);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/io/FileInputStream", "close", "()V", false);
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/security/MessageDigest", "digest", "()[B", false);
-        integer(m, 32); m.visitIntInsn(NEWARRAY, T_BYTE);
-        for (int i = 0; i < 32; i++) {
-            m.visitInsn(DUP); integer(m, i);
-            integer(m, Integer.parseInt(hash.substring(i * 2, i * 2 + 2), 16));
-            m.visitInsn(BASTORE);
-        }
-        m.visitMethodInsn(INVOKESTATIC, "java/util/Arrays", "equals", "([B[B)Z", false);
-        m.visitLabel(end); m.visitInsn(IRETURN);
-        m.visitLabel(fail); m.visitVarInsn(ASTORE, 5);
-        Label closeStart = new Label(), closeEnd = new Label();
-        Label closeFail = new Label(), noStream = new Label();
-        m.visitVarInsn(ALOAD, 2); m.visitJumpInsn(IFNULL, noStream);
-        m.visitTryCatchBlock(closeStart, closeEnd, closeFail, "java/lang/Throwable");
-        m.visitLabel(closeStart); m.visitVarInsn(ALOAD, 2);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/io/FileInputStream", "close", "()V", false);
-        m.visitLabel(closeEnd); m.visitJumpInsn(GOTO, noStream);
-        m.visitLabel(closeFail); m.visitInsn(POP);
-        m.visitLabel(noStream); m.visitInsn(ICONST_0); m.visitInsn(IRETURN);
-        m.visitMaxs(0, 0); m.visitEnd(); save(root, IDENTITY, w);
-    }
+    // region Hook ownership and entry
     private static void controller(Path root, List<Hook> hooks, boolean seek, boolean members,
-                                   boolean litho, boolean shorts) throws IOException {
+                                   boolean programMembers) throws IOException {
         ClassWriter w = writer(CTRL, "java/lang/Object");
         w.visitField(ACC_PRIVATE | ACC_STATIC, "handles", "[L" + HANDLE + ";", null, null).visitEnd();
         w.visitField(ACC_PUBLIC | ACC_STATIC | ACC_VOLATILE, "lastHook", "Ljava/lang/String;", null, null).visitEnd();
+        w.visitField(ACC_PUBLIC | ACC_STATIC | ACC_VOLATILE, "failures", "I", null, null).visitEnd();
+        w.visitField(ACC_PUBLIC | ACC_STATIC | ACC_VOLATILE, "failedGroups", "Ljava/lang/String;", null, null).visitEnd();
         MethodVisitor m = w.visitMethod(ACC_PUBLIC | ACC_STATIC | ACC_SYNCHRONIZED, "install",
                 "(L" + ENTRY + ";Ljava/lang/ClassLoader;)V", null, new String[] {"java/lang/Throwable"});
         m.visitCode(); Label start = new Label();
         m.visitFieldInsn(GETSTATIC, CTRL, "handles", "[L" + HANDLE + ";");
         m.visitJumpInsn(IFNULL, start); m.visitInsn(RETURN); m.visitLabel(start);
+        m.visitLdcInsn(""); m.visitFieldInsn(PUTSTATIC, CTRL, "failedGroups", "Ljava/lang/String;");
         // Locals: 0 entry, 1 loader, 2 class, 3.. executables, then handles and error.
         int handlesLocal = 3 + hooks.size();
         int errorLocal = handlesLocal + 1;
-        for (int i = 0; i < hooks.size(); i++) {
-            Hook h = hooks.get(i);
-            m.visitLdcInsn(h.hookId()); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
-            resolveMember(m, h.member(), 1, 2, 3 + i, "binding shape mismatch: " + h.hookId());
-            if (h.handler().equals("observe_video_id")) bindVideoField(m, h, 2);
-        }
-        if (seek) {
-            m.visitLdcInsn("SponsorBlock seek binding"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
-            m.visitVarInsn(ALOAD, 1);
-            m.visitMethodInsn(INVOKESTATIC, SEEK, "bind", "(Ljava/lang/ClassLoader;)V", false);
-        }
-        if (members) {
-            m.visitLdcInsn("settings entry bindings"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
-            m.visitVarInsn(ALOAD, 1);
-            m.visitMethodInsn(INVOKESTATIC, SettingsGenerator.MEMBERS, "bind", "(Ljava/lang/ClassLoader;)V", false);
-        }
-        if (litho) {
-            m.visitLdcInsn("sponsored feed bindings"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
-            m.visitVarInsn(ALOAD, 1);
-            m.visitMethodInsn(INVOKESTATIC, LITHO, "bind", "(Ljava/lang/ClassLoader;)V", false);
-        }
-        if (shorts) {
-            m.visitLdcInsn("Shorts feed bindings"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
-            m.visitVarInsn(ALOAD, 1);
-            m.visitMethodInsn(INVOKESTATIC, SHORTS, "bind", "(Ljava/lang/ClassLoader;)V", false);
-        }
         integer(m, hooks.size()); m.visitTypeInsn(ANEWARRAY, HANDLE);
         m.visitVarInsn(ASTORE, handlesLocal);
-        Label hookStart = new Label(), hookEnd = new Label(), rollback = new Label();
-        m.visitTryCatchBlock(hookStart, hookEnd, rollback, "java/lang/Throwable");
-        m.visitLabel(hookStart);
-        for (int i = 0; i < hooks.size(); i++) {
-            Hook h = hooks.get(i);
-            m.visitLdcInsn(h.hookId()); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
-            m.visitVarInsn(ALOAD, handlesLocal); integer(m, i);
-            m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 3 + i);
-            m.visitTypeInsn(CHECKCAST, "java/lang/reflect/Executable");
-            m.visitMethodInsn(INVOKEVIRTUAL, ENTRY, "hook",
-                    "(Ljava/lang/reflect/Executable;)L" + BUILDER + ";", false);
-            m.visitLdcInsn(h.hookId());
-            m.visitMethodInsn(INVOKEINTERFACE, BUILDER, "setId",
-                    "(Ljava/lang/String;)L" + BUILDER + ";", true);
-            m.visitFieldInsn(GETSTATIC, MODE, "PROTECTIVE", "L" + MODE + ";");
-            m.visitMethodInsn(INVOKEINTERFACE, BUILDER, "setExceptionMode",
-                    "(L" + MODE + ";)L" + BUILDER + ";", true);
-            String hooker = P + "EffectHooker" + i;
-            m.visitTypeInsn(NEW, hooker); m.visitInsn(DUP);
-            m.visitMethodInsn(INVOKESPECIAL, hooker, "<init>", "()V", false);
-            m.visitMethodInsn(INVOKEINTERFACE, BUILDER, "intercept",
-                    "(L" + HOOKER + ";)L" + HANDLE + ";", true);
-            m.visitInsn(AASTORE);
-        }
-        m.visitLabel(hookEnd);
         m.visitVarInsn(ALOAD, handlesLocal);
         m.visitFieldInsn(PUTSTATIC, CTRL, "handles", "[L" + HANDLE + ";");
+        Set<String> groups = new LinkedHashSet<>();
+        for (int phase = 0; phase <= 2; phase++) {
+            for (Hook hook : hooks) if (hook.startup() == phase) groups.add(hook.group());
+        }
+        for (String group : groups) {
+            Label groupStart = new Label(), groupEnd = new Label(), rollback = new Label(), done = new Label();
+            m.visitTryCatchBlock(groupStart, groupEnd, rollback, "java/lang/Throwable");
+            m.visitLabel(groupStart);
+            Set<Integer> requiredMembers = new LinkedHashSet<>();
+            boolean needsSeek = false, needsUi = false;
+            for (int i = 0; i < hooks.size(); i++) {
+                Hook h = hooks.get(i);
+                if (!h.group().equals(group)) continue;
+                m.visitLdcInsn(h.hookId()); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
+                resolveMember(m, h.member(), 1, 2, 3 + i, "binding shape mismatch: " + h.hookId());
+                for (int[] binding : AotHookCompiler.fieldBindings(h)) bindDeclaredField(m, h, 2, binding);
+                if (AotHookCompiler.uses(h, 38)) needsSeek = true;
+                if (AotHookCompiler.uses(h, 21)) needsUi = true;
+                for (int index : AotHookCompiler.members(h)) requiredMembers.add(index);
+            }
+            if (seek && needsSeek) {
+                m.visitLdcInsn("range-service seek binding"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
+                m.visitVarInsn(ALOAD, 1);
+                m.visitMethodInsn(INVOKESTATIC, SEEK, "bind", "(Ljava/lang/ClassLoader;)V", false);
+            }
+            if (members && needsUi) {
+                m.visitLdcInsn("ui member bindings"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
+                m.visitVarInsn(ALOAD, 1);
+                m.visitMethodInsn(INVOKESTATIC, UiModelGenerator.MEMBERS, "bind", "(Ljava/lang/ClassLoader;)V", false);
+            }
+            if (programMembers) for (int index : requiredMembers) {
+                m.visitLdcInsn("program member binding"); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
+                m.visitVarInsn(ALOAD, 1); integer(m, index);
+                m.visitMethodInsn(INVOKESTATIC, PROGRAM_MEMBERS, "bind", "(Ljava/lang/ClassLoader;I)V", false);
+            }
+            for (int i = 0; i < hooks.size(); i++) {
+                Hook h = hooks.get(i);
+                if (!h.group().equals(group)) continue;
+                m.visitLdcInsn(h.hookId()); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
+                m.visitVarInsn(ALOAD, handlesLocal); integer(m, i);
+                m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 3 + i);
+                m.visitTypeInsn(CHECKCAST, "java/lang/reflect/Executable");
+                m.visitMethodInsn(INVOKEVIRTUAL, ENTRY, "hook",
+                        "(Ljava/lang/reflect/Executable;)L" + BUILDER + ";", false);
+                m.visitLdcInsn(h.hookId());
+                m.visitMethodInsn(INVOKEINTERFACE, BUILDER, "setId",
+                        "(Ljava/lang/String;)L" + BUILDER + ";", true);
+                m.visitFieldInsn(GETSTATIC, MODE, "PROTECTIVE", "L" + MODE + ";");
+                m.visitMethodInsn(INVOKEINTERFACE, BUILDER, "setExceptionMode",
+                        "(L" + MODE + ";)L" + BUILDER + ";", true);
+                String hooker = P + "ProgramHooker" + i;
+                m.visitTypeInsn(NEW, hooker); m.visitInsn(DUP);
+                m.visitMethodInsn(INVOKESPECIAL, hooker, "<init>", "()V", false);
+                m.visitMethodInsn(INVOKEINTERFACE, BUILDER, "intercept",
+                        "(L" + HOOKER + ";)L" + HANDLE + ";", true);
+                m.visitInsn(AASTORE);
+            }
+            m.visitLabel(groupEnd); m.visitJumpInsn(GOTO, done);
+            m.visitLabel(rollback); m.visitVarInsn(ASTORE, errorLocal);
+            m.visitFieldInsn(GETSTATIC, CTRL, "failures", "I"); m.visitInsn(ICONST_1); m.visitInsn(IADD);
+            m.visitFieldInsn(PUTSTATIC, CTRL, "failures", "I");
+            m.visitTypeInsn(NEW, "java/lang/StringBuilder"); m.visitInsn(DUP);
+            m.visitFieldInsn(GETSTATIC, CTRL, "failedGroups", "Ljava/lang/String;");
+            m.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V", false);
+            m.visitLdcInsn("|" + group + "|");
+            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append",
+                    "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
+            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false);
+            m.visitFieldInsn(PUTSTATIC, CTRL, "failedGroups", "Ljava/lang/String;");
+            for (int i = 0; i < hooks.size(); i++) {
+                if (!hooks.get(i).group().equals(group)) continue;
+                Label unhookStart = new Label(), unhookEnd = new Label(), unhookFail = new Label(), skip = new Label();
+                m.visitTryCatchBlock(unhookStart, unhookEnd, unhookFail, "java/lang/Throwable");
+                m.visitLabel(unhookStart);
+                m.visitVarInsn(ALOAD, handlesLocal); integer(m, i); m.visitInsn(AALOAD);
+                m.visitJumpInsn(IFNULL, unhookEnd);
+                m.visitVarInsn(ALOAD, handlesLocal); integer(m, i); m.visitInsn(AALOAD);
+                m.visitMethodInsn(INVOKEINTERFACE, HANDLE, "unhook", "()V", true);
+                m.visitVarInsn(ALOAD, handlesLocal); integer(m, i); m.visitInsn(ACONST_NULL); m.visitInsn(AASTORE);
+                m.visitLabel(unhookEnd); m.visitJumpInsn(GOTO, skip);
+                m.visitLabel(unhookFail); m.visitInsn(POP); m.visitLabel(skip);
+            }
+            m.visitLdcInsn(LOG_TAG); m.visitLdcInsn("hook group " + group + " disabled");
+            m.visitVarInsn(ALOAD, errorLocal);
+            m.visitMethodInsn(INVOKESTATIC, "android/util/Log", "e",
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I", false);
+            m.visitInsn(POP); m.visitLabel(done);
+        }
         m.visitInsn(ACONST_NULL); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
         m.visitInsn(RETURN);
-        m.visitLabel(rollback); m.visitVarInsn(ASTORE, errorLocal);
-        m.visitMethodInsn(INVOKESTATIC, SNAP, "disableAll", "()V", false);
+        m.visitMaxs(0, 0); m.visitEnd();
+
+        m = w.visitMethod(ACC_PUBLIC | ACC_STATIC | ACC_SYNCHRONIZED, "uninstall", "()V", null, null);
+        m.visitCode();
         for (int i = 0; i < hooks.size(); i++) {
-            Label unhookStart = new Label(), unhookEnd = new Label();
-            Label unhookFail = new Label(), skip = new Label();
-            m.visitTryCatchBlock(unhookStart, unhookEnd, unhookFail, "java/lang/Throwable");
-            m.visitLabel(unhookStart);
-            m.visitVarInsn(ALOAD, handlesLocal); integer(m, i); m.visitInsn(AALOAD);
-            m.visitJumpInsn(IFNULL, unhookEnd);
-            m.visitVarInsn(ALOAD, handlesLocal); integer(m, i); m.visitInsn(AALOAD);
-            m.visitMethodInsn(INVOKEINTERFACE, HANDLE, "unhook", "()V", true);
-            m.visitLabel(unhookEnd); m.visitJumpInsn(GOTO, skip);
-            m.visitLabel(unhookFail); m.visitInsn(POP);
-            m.visitLabel(skip);
+            Label begin = new Label(), end = new Label(), failed = new Label(), next = new Label();
+            m.visitTryCatchBlock(begin, end, failed, "java/lang/Throwable");
+            m.visitLabel(begin); m.visitFieldInsn(GETSTATIC, CTRL, "handles", "[L" + HANDLE + ";");
+            m.visitJumpInsn(IFNULL, end); m.visitFieldInsn(GETSTATIC, CTRL, "handles", "[L" + HANDLE + ";");
+            integer(m, i); m.visitInsn(AALOAD); m.visitJumpInsn(IFNULL, end);
+            m.visitFieldInsn(GETSTATIC, CTRL, "handles", "[L" + HANDLE + ";"); integer(m, i);
+            m.visitInsn(AALOAD); m.visitMethodInsn(INVOKEINTERFACE, HANDLE, "unhook", "()V", true);
+            m.visitLabel(end); m.visitJumpInsn(GOTO, next);
+            m.visitLabel(failed); m.visitInsn(POP); m.visitLabel(next);
         }
-        m.visitVarInsn(ALOAD, errorLocal); m.visitInsn(ATHROW);
-        m.visitMaxs(0, 0); m.visitEnd(); save(root, CTRL, w);
+        m.visitInsn(ACONST_NULL); m.visitFieldInsn(PUTSTATIC, CTRL, "handles", "[L" + HANDLE + ";");
+        m.visitInsn(ICONST_0); m.visitFieldInsn(PUTSTATIC, CTRL, "failures", "I");
+        m.visitLdcInsn(""); m.visitFieldInsn(PUTSTATIC, CTRL, "failedGroups", "Ljava/lang/String;");
+        m.visitInsn(ACONST_NULL); m.visitFieldInsn(PUTSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
+        m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
+
+        m = w.visitMethod(ACC_PUBLIC | ACC_STATIC, "unhookOld", "(Ljava/util/List;)V", null, null);
+        m.visitCode(); m.visitInsn(ICONST_0); m.visitVarInsn(ISTORE, 1);
+        Label loop = new Label(), done = new Label(); m.visitLabel(loop);
+        m.visitVarInsn(ILOAD, 1); m.visitVarInsn(ALOAD, 0);
+        m.visitMethodInsn(INVOKEINTERFACE, "java/util/List", "size", "()I", true);
+        m.visitJumpInsn(IF_ICMPGE, done);
+        Label begin = new Label(), end = new Label(), failed = new Label(), next = new Label();
+        m.visitTryCatchBlock(begin, end, failed, "java/lang/Throwable");
+        m.visitLabel(begin); m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ILOAD, 1);
+        m.visitMethodInsn(INVOKEINTERFACE, "java/util/List", "get", "(I)Ljava/lang/Object;", true);
+        m.visitTypeInsn(CHECKCAST, HANDLE); m.visitMethodInsn(INVOKEINTERFACE, HANDLE, "unhook", "()V", true);
+        m.visitLabel(end); m.visitJumpInsn(GOTO, next);
+        m.visitLabel(failed); m.visitInsn(POP); m.visitLabel(next);
+        m.visitIincInsn(1, 1); m.visitJumpInsn(GOTO, loop); m.visitLabel(done);
+        m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
+        save(root, CTRL, w);
     }
-    private static void entry(Path root, List<Config> configs, boolean active) throws IOException {
+    private static void entry(Path root, List<Config> configs, String authorityDigest,
+                              int[] resolverWeights, Diagnostic diagnostic) throws IOException {
         ClassWriter w = writer(ENTRY, XPOSED);
         w.visitField(ACC_PRIVATE, "listener", "L" + LISTENER + ";", null, null).visitEnd();
+        w.visitField(ACC_PRIVATE, "preferences", "[L" + PREFS + ";", null, null).visitEnd();
+        w.visitField(ACC_PRIVATE, "application", "Landroid/content/pm/ApplicationInfo;", null, null).visitEnd();
+        w.visitField(ACC_PRIVATE, "loader", "Ljava/lang/ClassLoader;", null, null).visitEnd();
         ctor(w, XPOSED);
-        MethodVisitor m = w.visitMethod(ACC_PUBLIC, "onPackageReady", "(L" + PARAM + ";)V", null, null);
+        MethodVisitor m = w.visitMethod(ACC_PRIVATE, "start",
+                "(Landroid/content/pm/ApplicationInfo;Ljava/lang/ClassLoader;)V", null, null);
         m.visitCode();
-        if (!active) {
-            m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd(); save(root, ENTRY, w); return;
-        }
         Set<String> groups = new LinkedHashSet<>();
         for (Config c : configs) groups.add(c.group());
-        Label start = new Label(), end = new Label(), fail = new Label(), done = new Label(), identityOk = new Label();
+        Label start = new Label(), end = new Label(), fail = new Label(), done = new Label();
         m.visitTryCatchBlock(start, end, fail, "java/lang/Throwable");
-        m.visitLabel(start); m.visitLdcInsn("com.google.android.youtube");
+        m.visitLabel(start);
+        m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 1);
+        m.visitFieldInsn(PUTFIELD, ENTRY, "application", "Landroid/content/pm/ApplicationInfo;");
+        m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 2);
+        m.visitFieldInsn(PUTFIELD, ENTRY, "loader", "Ljava/lang/ClassLoader;");
+        for (int weight : resolverWeights) integer(m, weight);
+        m.visitMethodInsn(INVOKESTATIC, RESOLVER, "configure", "(IIIIIII)V", false);
         m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, PARAM, "getPackageName", "()Ljava/lang/String;", true);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
-        m.visitJumpInsn(IFEQ, done);
-        m.visitLdcInsn("com.google.android.youtube");
-        m.visitMethodInsn(INVOKESTATIC, "android/app/Application", "getProcessName", "()Ljava/lang/String;", false);
-        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
-        m.visitJumpInsn(IFEQ, done);
-        m.visitVarInsn(ALOAD, 1);
-        m.visitMethodInsn(INVOKEINTERFACE, PARAM, "getApplicationInfo",
-                "()Landroid/content/pm/ApplicationInfo;", true);
-        m.visitMethodInsn(INVOKESTATIC, IDENTITY, "matches", "(Landroid/content/pm/ApplicationInfo;)Z", false);
-        m.visitJumpInsn(IFNE, identityOk);
-        m.visitLdcInsn("mismatch"); m.visitLdcInsn("YouTube APK does not match the verified target build");
-        m.visitMethodInsn(INVOKESTATIC, DIAG, "report", "(Ljava/lang/String;Ljava/lang/String;)V", false);
-        m.visitJumpInsn(GOTO, done);
-        m.visitLabel(identityOk);
-        m.visitLdcInsn("checking"); m.visitLdcInsn("Resolving and installing hooks");
-        m.visitMethodInsn(INVOKESTATIC, DIAG, "report", "(Ljava/lang/String;Ljava/lang/String;)V", false);
+        m.visitLdcInsn(authorityDigest);
+        m.visitMethodInsn(INVOKESTATIC, RESOLVER, "initialize",
+                "(Landroid/content/pm/ApplicationInfo;Ljava/lang/String;)V", false);
+        m.visitLdcInsn(diagnostic.checkingState()); m.visitLdcInsn(diagnostic.checkingText()); m.visitLdcInsn("");
+        m.visitMethodInsn(INVOKESTATIC, DIAG, "report",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", false);
         m.visitVarInsn(ALOAD, 0); m.visitTypeInsn(NEW, LISTENER); m.visitInsn(DUP);
         m.visitMethodInsn(INVOKESPECIAL, LISTENER, "<init>", "()V", false);
         m.visitFieldInsn(PUTFIELD, ENTRY, "listener", "L" + LISTENER + ";");
+        m.visitVarInsn(ALOAD, 0); integer(m, groups.size()); m.visitTypeInsn(ANEWARRAY, PREFS);
+        m.visitFieldInsn(PUTFIELD, ENTRY, "preferences", "[L" + PREFS + ";");
+        int groupIndex = 0;
         for (String group : groups) {
             m.visitVarInsn(ALOAD, 0); m.visitLdcInsn(group);
             m.visitMethodInsn(INVOKEVIRTUAL, ENTRY, "getRemotePreferences",
                     "(Ljava/lang/String;)L" + PREFS + ";", false);
-            m.visitVarInsn(ASTORE, 2);
+            m.visitVarInsn(ASTORE, 3);
+            m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(GETFIELD, ENTRY, "preferences", "[L" + PREFS + ";");
+            integer(m, groupIndex++); m.visitVarInsn(ALOAD, 3); m.visitInsn(AASTORE);
             for (int i = 0; i < configs.size(); i++) {
                 Config c = configs.get(i);
                 if (!c.group().equals(group)) continue;
-                integer(m, i); m.visitVarInsn(ALOAD, 2); m.visitLdcInsn(c.key());
+                integer(m, i); m.visitVarInsn(ALOAD, 3); m.visitLdcInsn(c.key());
                 m.visitInsn(c.fallback() ? ICONST_1 : ICONST_0);
                 m.visitMethodInsn(INVOKEINTERFACE, PREFS, "getBoolean", "(Ljava/lang/String;Z)Z", true);
                 m.visitMethodInsn(INVOKESTATIC, SNAP, "publish", "(IZ)V", false);
             }
-            m.visitVarInsn(ALOAD, 2); m.visitVarInsn(ALOAD, 0);
+            m.visitVarInsn(ALOAD, 3); m.visitVarInsn(ALOAD, 0);
             m.visitFieldInsn(GETFIELD, ENTRY, "listener", "L" + LISTENER + ";");
             m.visitMethodInsn(INVOKEINTERFACE, PREFS, "registerOnSharedPreferenceChangeListener",
                     "(L" + PREF_LISTENER + ";)V", true);
         }
-        m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 1);
-        // API 102 exposes the target package loader through the inherited
-        // PackageLoadedParam method. PackageReadyParam#getClassLoader is the
-        // module/component loader and cannot resolve YouTube members.
-        m.visitMethodInsn(INVOKEINTERFACE, PARAM, "getDefaultClassLoader", "()Ljava/lang/ClassLoader;", true);
+        m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 2);
         m.visitMethodInsn(INVOKESTATIC, CTRL, "install",
                 "(L" + ENTRY + ";Ljava/lang/ClassLoader;)V", false);
-        m.visitLdcInsn("ready"); m.visitLdcInsn("All required hooks installed");
-        m.visitMethodInsn(INVOKESTATIC, DIAG, "report", "(Ljava/lang/String;Ljava/lang/String;)V", false);
+        m.visitMethodInsn(INVOKESTATIC, RESOLVER, "finish", "()V", false);
+        Label allReady = new Label(), statusDone = new Label();
+        m.visitFieldInsn(GETSTATIC, CTRL, "failures", "I"); m.visitJumpInsn(IFEQ, allReady);
+        m.visitLdcInsn(diagnostic.degradedState()); m.visitLdcInsn(diagnostic.degradedText());
+        m.visitFieldInsn(GETSTATIC, CTRL, "failedGroups", "Ljava/lang/String;");
+        m.visitMethodInsn(INVOKESTATIC, DIAG, "report",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", false);
+        log(m, "w", "module loaded with disabled hook groups");
+        m.visitJumpInsn(GOTO, statusDone);
+        m.visitLabel(allReady);
+        m.visitLdcInsn(diagnostic.readyState()); m.visitLdcInsn(diagnostic.readyText()); m.visitLdcInsn("");
+        m.visitMethodInsn(INVOKESTATIC, DIAG, "report",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", false);
         log(m, "i", "module hooks installed");
+        m.visitLabel(statusDone);
         m.visitLabel(end); m.visitLabel(done); m.visitInsn(RETURN);
-        m.visitLabel(fail); m.visitVarInsn(ASTORE, 3);
+        m.visitLabel(fail); m.visitVarInsn(ASTORE, 4);
+        m.visitMethodInsn(INVOKESTATIC, RESOLVER, "finish", "()V", false);
+        m.visitVarInsn(ALOAD, 0); m.visitMethodInsn(INVOKESPECIAL, ENTRY, "detach", "()V", false);
+        m.visitMethodInsn(INVOKESTATIC, CTRL, "uninstall", "()V", false);
         m.visitMethodInsn(INVOKESTATIC, SNAP, "disableAll", "()V", false);
-        m.visitLdcInsn("failed");
+        m.visitLdcInsn(diagnostic.failedState());
         m.visitTypeInsn(NEW, "java/lang/StringBuilder"); m.visitInsn(DUP);
         m.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "()V", false);
         m.visitFieldInsn(GETSTATIC, CTRL, "lastHook", "Ljava/lang/String;");
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
         m.visitLdcInsn(": ");
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
-        m.visitVarInsn(ALOAD, 3);
+        m.visitVarInsn(ALOAD, 4);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/Object;)Ljava/lang/StringBuilder;", false);
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false);
-        m.visitMethodInsn(INVOKESTATIC, DIAG, "report", "(Ljava/lang/String;Ljava/lang/String;)V", false);
+        m.visitLdcInsn("");
+        m.visitMethodInsn(INVOKESTATIC, DIAG, "report",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", false);
         m.visitLdcInsn(LOG_TAG); m.visitLdcInsn("hook installation failed");
-        m.visitVarInsn(ALOAD, 3);
+        m.visitVarInsn(ALOAD, 4);
         m.visitMethodInsn(INVOKESTATIC, "android/util/Log", "e",
                 "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I", false);
         m.visitInsn(POP); m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
+
+        m = w.visitMethod(ACC_PRIVATE, "detach", "()V", null, null); m.visitCode();
+        groupIndex = 0;
+        for (String ignored : groups) {
+            Label begin = new Label(), cleanupEnd = new Label(), failed = new Label(), next = new Label();
+            m.visitTryCatchBlock(begin, cleanupEnd, failed, "java/lang/Throwable");
+            m.visitLabel(begin); m.visitVarInsn(ALOAD, 0);
+            m.visitFieldInsn(GETFIELD, ENTRY, "preferences", "[L" + PREFS + ";");
+            m.visitJumpInsn(IFNULL, cleanupEnd); m.visitVarInsn(ALOAD, 0);
+            m.visitFieldInsn(GETFIELD, ENTRY, "preferences", "[L" + PREFS + ";");
+            integer(m, groupIndex++); m.visitInsn(AALOAD); m.visitJumpInsn(IFNULL, cleanupEnd);
+            m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(GETFIELD, ENTRY, "preferences", "[L" + PREFS + ";");
+            integer(m, groupIndex - 1); m.visitInsn(AALOAD); m.visitVarInsn(ALOAD, 0);
+            m.visitFieldInsn(GETFIELD, ENTRY, "listener", "L" + LISTENER + ";");
+            m.visitMethodInsn(INVOKEINTERFACE, PREFS, "unregisterOnSharedPreferenceChangeListener",
+                    "(L" + PREF_LISTENER + ";)V", true);
+            m.visitLabel(cleanupEnd); m.visitJumpInsn(GOTO, next);
+            m.visitLabel(failed); m.visitInsn(POP); m.visitLabel(next);
+        }
+        m.visitVarInsn(ALOAD, 0); m.visitInsn(ACONST_NULL);
+        m.visitFieldInsn(PUTFIELD, ENTRY, "preferences", "[L" + PREFS + ";");
+        m.visitVarInsn(ALOAD, 0); m.visitInsn(ACONST_NULL);
+        m.visitFieldInsn(PUTFIELD, ENTRY, "listener", "L" + LISTENER + ";");
+        m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
+
+        m = w.visitMethod(ACC_PUBLIC, "onPackageReady", "(L" + PARAM + ";)V", null, null); m.visitCode();
+        Label packageDone = new Label(); m.visitLdcInsn(diagnostic.targetPackage()); m.visitVarInsn(ALOAD, 1);
+        m.visitMethodInsn(INVOKEINTERFACE, PARAM, "getPackageName", "()Ljava/lang/String;", true);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+        m.visitJumpInsn(IFEQ, packageDone); m.visitLdcInsn(diagnostic.targetPackage());
+        m.visitMethodInsn(INVOKESTATIC, "android/app/Application", "getProcessName", "()Ljava/lang/String;", false);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+        m.visitJumpInsn(IFEQ, packageDone); m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 1);
+        m.visitMethodInsn(INVOKEINTERFACE, PARAM, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;", true);
+        m.visitVarInsn(ALOAD, 1);
+        // getDefaultClassLoader is the target loader; PackageReadyParam#getClassLoader is the component loader.
+        m.visitMethodInsn(INVOKEINTERFACE, PARAM, "getDefaultClassLoader", "()Ljava/lang/ClassLoader;", true);
+        m.visitMethodInsn(INVOKESPECIAL, ENTRY, "start",
+                "(Landroid/content/pm/ApplicationInfo;Ljava/lang/ClassLoader;)V", false);
+        m.visitLabel(packageDone); m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
+
+        m = w.visitMethod(ACC_PUBLIC, "onHotReloading", "(L" + HOT_RELOADING + ";)Z", null, null); m.visitCode();
+        Label inactive = new Label(), saveStart = new Label(), saveEnd = new Label();
+        Label stateFailed = new Label(), stateReady = new Label();
+        m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(GETFIELD, ENTRY, "application", "Landroid/content/pm/ApplicationInfo;");
+        m.visitJumpInsn(IFNULL, inactive); m.visitTryCatchBlock(saveStart, saveEnd, stateFailed, "java/lang/Throwable");
+        m.visitLabel(saveStart); m.visitVarInsn(ALOAD, 1); m.visitInsn(ICONST_2);
+        m.visitTypeInsn(ANEWARRAY, "java/lang/Object"); m.visitInsn(DUP); m.visitInsn(ICONST_0);
+        m.visitVarInsn(ALOAD, 0); m.visitFieldInsn(GETFIELD, ENTRY, "application", "Landroid/content/pm/ApplicationInfo;");
+        m.visitInsn(AASTORE); m.visitInsn(DUP); m.visitInsn(ICONST_1); m.visitVarInsn(ALOAD, 0);
+        m.visitFieldInsn(GETFIELD, ENTRY, "loader", "Ljava/lang/ClassLoader;"); m.visitInsn(AASTORE);
+        m.visitMethodInsn(INVOKEINTERFACE, HOT_RELOADING, "setSavedInstanceState", "(Ljava/lang/Object;)V", true);
+        m.visitLabel(saveEnd); m.visitJumpInsn(GOTO, stateReady);
+        m.visitLabel(stateFailed); m.visitInsn(POP); m.visitInsn(ICONST_0); m.visitInsn(IRETURN);
+        m.visitLabel(stateReady);
+        m.visitVarInsn(ALOAD, 0); m.visitMethodInsn(INVOKESPECIAL, ENTRY, "detach", "()V", false);
+        m.visitMethodInsn(INVOKESTATIC, CTRL, "uninstall", "()V", false);
+        m.visitMethodInsn(INVOKESTATIC, RESOLVER, "finish", "()V", false);
+        m.visitMethodInsn(INVOKESTATIC, SNAP, "disableAll", "()V", false);
+        m.visitLabel(inactive); m.visitInsn(ICONST_1); m.visitInsn(IRETURN);
+        m.visitMaxs(0, 0); m.visitEnd();
+
+        m = w.visitMethod(ACC_PUBLIC, "onHotReloaded", "(L" + HOT_RELOADED + ";)V", null, null); m.visitCode();
+        m.visitVarInsn(ALOAD, 1); m.visitMethodInsn(INVOKEINTERFACE, HOT_RELOADED, "getOldHookHandles",
+                "()Ljava/util/List;", true); m.visitMethodInsn(INVOKESTATIC, CTRL, "unhookOld", "(Ljava/util/List;)V", false);
+        m.visitVarInsn(ALOAD, 1); m.visitMethodInsn(INVOKEINTERFACE, HOT_RELOADED, "getSavedInstanceState",
+                "()Ljava/lang/Object;", true); m.visitVarInsn(ASTORE, 2);
+        Label invalid = new Label(); m.visitVarInsn(ALOAD, 2); m.visitTypeInsn(INSTANCEOF, "[Ljava/lang/Object;");
+        m.visitJumpInsn(IFEQ, invalid); m.visitVarInsn(ALOAD, 2); m.visitTypeInsn(CHECKCAST, "[Ljava/lang/Object;");
+        m.visitVarInsn(ASTORE, 3); m.visitVarInsn(ALOAD, 3); m.visitInsn(ARRAYLENGTH); m.visitInsn(ICONST_2);
+        m.visitJumpInsn(IF_ICMPNE, invalid); m.visitVarInsn(ALOAD, 3); m.visitInsn(ICONST_0); m.visitInsn(AALOAD);
+        m.visitTypeInsn(INSTANCEOF, "android/content/pm/ApplicationInfo"); m.visitJumpInsn(IFEQ, invalid);
+        m.visitVarInsn(ALOAD, 3); m.visitInsn(ICONST_1); m.visitInsn(AALOAD);
+        m.visitTypeInsn(INSTANCEOF, "java/lang/ClassLoader"); m.visitJumpInsn(IFEQ, invalid);
+        m.visitVarInsn(ALOAD, 0); m.visitVarInsn(ALOAD, 3); m.visitInsn(ICONST_0); m.visitInsn(AALOAD);
+        m.visitTypeInsn(CHECKCAST, "android/content/pm/ApplicationInfo"); m.visitVarInsn(ALOAD, 3);
+        m.visitInsn(ICONST_1); m.visitInsn(AALOAD); m.visitTypeInsn(CHECKCAST, "java/lang/ClassLoader");
+        m.visitMethodInsn(INVOKESPECIAL, ENTRY, "start",
+                "(Landroid/content/pm/ApplicationInfo;Ljava/lang/ClassLoader;)V", false);
+        m.visitInsn(RETURN); m.visitLabel(invalid); m.visitMethodInsn(INVOKESTATIC, SNAP, "disableAll", "()V", false);
+        m.visitLdcInsn(diagnostic.failedState()); m.visitLdcInsn("hot reload state unavailable"); m.visitLdcInsn("");
+        m.visitMethodInsn(INVOKESTATIC, DIAG, "report", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", false);
+        m.visitInsn(RETURN); m.visitMaxs(0, 0); m.visitEnd();
         save(root, ENTRY, w);
     }
 
@@ -912,64 +936,86 @@ public final class GenerateModule implements Opcodes {
     // region Plan
 
     private static Member member(String[] f, int at) {
-        return new Member(f[at], f[at + 1], f[at + 2], f[at + 3], Integer.parseInt(f[at + 4]), f[at + 5]);
+        return new Member(f[at], f[at + 1], f[at + 2], f[at + 3], Integer.parseInt(f[at + 4]),
+                f[at + 5], Integer.parseInt(f[at + 6]));
     }
     /**
      * Reads the tab-separated plan written by {@code build_development.py}:
-     * {@code target}, {@code active}, {@code config}, {@code hook}, {@code seek},
+     * {@code target}, {@code config}, {@code hook}, {@code seek},
      * {@code segments} and {@code category} lines.
      */
     private static Plan readPlan(Path file) throws IOException {
-        String hash = null; Boolean active = null; Seek seek = null; String[] segmentLine = null;
+        String hash = null; Seek seek = null; String[] segmentLine = null;
+        int[] resolverWeights = null;
         Diagnostic diagnostic = null;
         List<Config> configs = new ArrayList<>();
         List<Hook> hooks = new ArrayList<>();
         List<Category> categories = new ArrayList<>();
-        SettingsGenerator.Builder settings = new SettingsGenerator.Builder();
+        List<Member> programMembers = new ArrayList<>();
+        UiModelGenerator.Builder settings = new UiModelGenerator.Builder();
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             if (line.isEmpty()) continue;
             String[] f = line.split("\t", -1);
             switch (f[0]) {
                 case "target" -> hash = f[1];
-                case "active" -> active = Boolean.parseBoolean(f[1]);
-                case "diagnostic" -> diagnostic = new Diagnostic(f[1], f[2], f[3], f[4], f[5], f[6]);
+                case "resolver" -> {
+                    if (f.length != 8) throw new IllegalArgumentException("resolver policy width");
+                    resolverWeights = new int[7];
+                    for (int i = 0; i < 7; i++) resolverWeights[i] = Integer.parseInt(f[i + 1]);
+                }
+                case "diagnostic" -> diagnostic = new Diagnostic(f[1], f[2], f[3], f[4], f[5], f[6],
+                        f[7], f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15], f[16], f[17],
+                        f[18], f[19], f[20], f[21], f[22]);
                 case "config" -> configs.add(new Config(f[1], f[2], Boolean.parseBoolean(f[3])));
-                case "hook" -> hooks.add(new Hook(member(f, 1), f[7], Integer.parseInt(f[8]), f[9],
-                        List.of(f).subList(10, f.length)));
+                case "hook" -> hooks.add(new Hook(member(f, 1), Integer.parseInt(f[8]), f[9], f[10],
+                        Integer.parseInt(f[12]), List.of(f).subList(11, f.length)));
                 case "seek" -> {
                     if (seek != null) throw new IllegalArgumentException("duplicate seek");
-                    seek = new Seek(member(f, 1), f[7]);
+                    seek = new Seek(member(f, 1), f[8]);
                 }
                 case "segments" -> segmentLine = f;
                 case "category" -> categories.add(new Category(f[1], Integer.parseInt(f[2])));
-                case "member", "role", "page", "layouts", "icon", "section", "item" -> settings.accept(f);
+                case "pmember" -> programMembers.add(member(f, 2));
+                case "member", "role", "page", "layouts", "section", "item" -> settings.accept(f);
                 default -> throw new IllegalArgumentException("unknown plan line " + f[0]);
             }
         }
-        if (hash == null || active == null || configs.isEmpty() || hooks.isEmpty() || diagnostic == null
+        for (Hook hook : hooks) {
+            if (hook.group().isEmpty() || hook.startup() < 0 || hook.startup() > 2) {
+                throw new IllegalArgumentException("invalid hook group/startup policy");
+            }
+            if (hooks.stream().anyMatch(other -> other.group().equals(hook.group())
+                    && other.startup() != hook.startup())) {
+                throw new IllegalArgumentException("hook group spans startup phases: " + hook.group());
+            }
+        }
+        if (hash == null || resolverWeights == null || configs.isEmpty() || hooks.isEmpty() || diagnostic == null
                 || !diagnostic.id().equals("hook_compatibility")
                 || !diagnostic.transport().equals("EXPLICIT_BROADCAST")
-                || !diagnostic.failureMode().equals("ROLLBACK_ALL_DISABLE_TOGGLES")
-                || !diagnostic.targetPackage().equals("com.google.android.youtube")) {
+                || !diagnostic.failureMode().equals("GROUP_ROLLBACK_FAIL_OPEN")
+                || diagnostic.targetPackage().isEmpty()) {
             throw new IllegalArgumentException("incomplete plan");
         }
         Segments segments = null;
         if (segmentLine != null) {
-            segments = new Segments(segmentLine[1], Integer.parseInt(segmentLine[2]),
-                    Integer.parseInt(segmentLine[3]), Integer.parseInt(segmentLine[4]),
-                    segmentLine[5], segmentLine[6], List.copyOf(categories));
+            segments = new Segments(segmentLine[1], segmentLine[2], Integer.parseInt(segmentLine[3]),
+                    Integer.parseInt(segmentLine[4]), Integer.parseInt(segmentLine[5]),
+                    Integer.parseInt(segmentLine[6]), Integer.parseInt(segmentLine[7]), segmentLine[8],
+                    segmentLine[9], segmentLine[10], segmentLine[11], segmentLine[12], segmentLine[13],
+                    segmentLine[14], segmentLine[15], Integer.parseInt(segmentLine[16]),
+                    Boolean.parseBoolean(segmentLine[17]), Integer.parseInt(segmentLine[18]),
+                    List.copyOf(categories));
         }
-        boolean skips = hooks.stream().anyMatch(h -> h.handler().equals("skip_segments"));
-        boolean captures = hooks.stream().anyMatch(h -> h.handler().equals("capture_receiver"));
-        boolean observes = hooks.stream().anyMatch(h -> h.handler().equals("observe_video_id"));
-        if (skips != (segments != null) || skips != (seek != null) || skips != captures || skips != observes
+        boolean range = hooks.stream().anyMatch(h -> AotHookCompiler.uses(h, 44));
+        if (range != (segments != null) || range != (seek != null)
                 || (segments != null && categories.isEmpty())) {
             throw new IllegalArgumentException("segment skipping plan is incomplete");
         }
-        SettingsGenerator.Settings built = settings.build();
-        boolean injects = hooks.stream().anyMatch(h -> h.handler().equals("inject_settings_entry"));
+        UiModelGenerator.Settings built = settings.build();
+        boolean injects = hooks.stream().anyMatch(h -> AotHookCompiler.uses(h, 21));
         if (injects != (built != null)) throw new IllegalArgumentException("settings plan is incomplete");
-        return new Plan(hash, active, configs, hooks, seek, segments, built, diagnostic);
+        return new Plan(hash, configs, hooks, seek, segments, built, diagnostic,
+                List.copyOf(programMembers), resolverWeights);
     }
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("usage: GenerateModule <out> <plan>");
@@ -978,20 +1024,15 @@ public final class GenerateModule implements Opcodes {
         snapshot(root, plan.configs().size()); listener(root, plan.configs());
         for (int i = 0; i < plan.hooks().size(); i++) hooker(root, i, plan.hooks().get(i));
         if (plan.seek() != null) {
-            seekPort(root, plan.seek()); segmentStore(root); segmentFetch(root, plan.segments());
+            stateSlots(root, 4); seekPort(root, plan.seek()); segmentStore(root); segmentFetch(root, plan.segments());
         }
-        if (plan.settings() != null) SettingsGenerator.generate(root, plan.settings(), plan.configs(),
-                plan.hooks(), plan.active(), plan.diagnostic());
-        Hook lithoHook = plan.hooks().stream().filter(h -> h.handler().equals("filter_litho_ads"))
-                .findFirst().orElse(null);
-        if (lithoHook != null) LithoAdGenerator.generate(root, lithoHook.arguments());
-        Hook shortsHook = plan.hooks().stream().filter(h -> h.handler().equals("filter_shorts_ads"))
-                .findFirst().orElse(null);
-        if (shortsHook != null) ShortsFeedGenerator.generate(root, shortsHook.arguments());
-        identity(root, plan.hash()); controller(root, plan.hooks(), plan.seek() != null,
-                plan.settings() != null, lithoHook != null, shortsHook != null);
-        DiagnosticsGenerator.generate(root, plan.diagnostic());
-        entry(root, plan.configs(), plan.active());
+        if (plan.settings() != null) UiModelGenerator.generate(root, plan.settings(), plan.configs(),
+                plan.hooks(), plan.diagnostic());
+        if (!plan.programMembers().isEmpty()) ProgramMembersGenerator.generate(root, plan.programMembers());
+        controller(root, plan.hooks(), plan.seek() != null,
+                plan.settings() != null, !plan.programMembers().isEmpty());
+        StatusTransportGenerator.generate(root, plan.diagnostic());
+        entry(root, plan.configs(), plan.hash(), plan.resolverWeights(), plan.diagnostic());
     }
 
     // endregion

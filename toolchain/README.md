@@ -15,12 +15,12 @@ validated LMP
 External toolchain components may be implemented in conventional languages. They are not
 an alternate source of project behavior.
 
-The development frontend evaluates each `.mal` unit under pinned limits and
-validates its typed records. The classfile backend accepts one uniquely verified
-BindingSpec per Endpoint, emits one Hook Controller and one Xposed entry, and
-packages no runtime Malbolge evaluator or DexKit library. Gradle runs this
-generation before packaging. The `bindinglab` Android app is a separate build
-tool for exact-target discovery.
+The frontend evaluates each `.mal` unit under pinned limits. Feature units emit
+MBP1 executable bytecode; schema units provide validated endpoints, config, UI,
+diagnostics, and fallback fixtures. The backend AOT-compiles MBP1 to classfiles.
+The APK has no Malbolge evaluator. DexKit is packaged for bounded cold resolution;
+warm cache hits validate descriptors without opening it. `toolchain/bindinglab` remains
+for reference-fixture research; it is no longer part of the Gradle build.
 
 Current source units were generated with the pinned zb3 `malbolge-tools`
 linear generator and its output was independently run through the bounded
@@ -28,8 +28,7 @@ evaluator. Its MIT notice is in `LICENSES/MALBOLGE-TOOLS-MIT.txt`.
 
 Every release archives exact binary/version/hash provenance privately.
 
-`frame_unit.py` frames a unit's typed records as the exact bytes it must print; that
-target is fed to the pinned linear generator with the input opcode removed from its
-random filler choices (MBX-CLASSIC-REF/1 prohibits `/`). `build_development.py` lowers
-the validated graph to `build/generated/plan.tsv`, which `GenerateModule` compiles (settings entry and manager classes in
-`SettingsGenerator` and `DiagnosticsGenerator`).
+`assemble_program.py` encodes MBP1 and feeds those bytes to the pinned linear generator
+with the input opcode excluded from filler choices. `build_development.py` lowers the
+validated graph/programs to a review plan; `GenerateModule` emits the generic hook,
+UI-model, range-service, status-transport, and member-table classfiles.

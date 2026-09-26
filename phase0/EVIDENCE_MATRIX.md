@@ -16,7 +16,7 @@
 | R8 `java_init.list` adaptation | Verified | libxposed README/docs | backend must adapt resource after obfuscation |
 | Vector callback replay behavior | Verified on device: not replayed | HR-01 probe | reload design cannot rely on replay |
 | Vector multi-hook transactionality | Verified on device: none, no rollback | HR-07 probe | generation self-fails-closed; unsafe multi-hook feature is restart-only |
-| DexKit latest stable | Verified | primary project release | pin 2.2.0 / `ffa6c51` |
+| DexKit latest stable | Verified | primary project release | pin 2.3.0 / `c9cd12a14b75409bebd2f73e4dfc5ff575df3eb8` |
 | Current Android build baseline | Verified | Android Developers | AGP 9.4.1 / Gradle 9.6 / JDK 17 / API 37 |
 | Exact latest YouTube bytes | Selected | `21.37.42` hashed in `target/current/target-release.lock.yml` | ARTIFACT_SELECTED; BOUND needs Binding Laboratory |
 | Vector v2.2 installed build | Verified on device | `88f8e1fa` on characterization device | LOCKFILE commit confirmed |

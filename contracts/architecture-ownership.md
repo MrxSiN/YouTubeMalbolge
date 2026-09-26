@@ -1,20 +1,17 @@
 # Architecture Ownership
 
-| Truth | Single authority |
+| Truth | Authority |
 |---|---|
-| Project executable behavior | Malbolge source |
-| Semantic identity/relationships | Canonical Module Graph |
-| Graph validity | independent semantic validator |
-| Endpoint discovery criteria | Malbolge-originated BindingSpec |
-| Current physical YouTube binding | Verified Target Binding Set |
-| Supported runtime target | Target Release Manifest |
-| Hook install/replace/remove | Hook Controller |
-| Persistent configuration | manager/config store |
-| Runtime configuration | immutable ConfigSnapshot |
-| Mutable feature state | declared FeatureState owner |
-| Release physical layout | Release Layout Plan |
-| Source→artifact mapping | private provenance graph |
-| ART hook mechanics | Vector/libxposed |
-| Host implementation | YouTube, treated as external/untrusted |
+| Feature and hook behavior | executable raw Malbolge MBP1 programs |
+| Configuration, UI model, diagnostics policy | executable raw Malbolge programs |
+| Resolver fingerprints and scoring weights | raw Malbolge BindingSpecs and resolver policy |
+| Physical runtime resolution | generic cached DexKit bridge |
+| Hook install/remove | generated generic Hook Controller |
+| Persistent configuration | libxposed RemotePreferences |
+| Runtime configuration | generated immutable boolean snapshot |
+| Generated JVM code | deterministic generic AOT compiler |
+| ART hook mechanics | libxposed API 102 |
+| Host implementation | external and untrusted |
 
-No other component may independently redefine these truths.
+`target/current` supplies regression fixtures and cheap exact-descriptor hints. It is not
+a runtime version allowlist or semantic authority.

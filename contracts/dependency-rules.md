@@ -1,35 +1,8 @@
-# Dependency Rules
-
-Canonical direction:
+# Dependency rules
 
 ```text
-Feature
- → Capability / Semantic Endpoint
- → Effect
- → generated endpoint pipeline
- → TargetBinding
- → target member adapter
- → Vector/libxposed adapter
+Malbolge program → MBP1 generic ABI → AOT JVM bytecode → generic host capabilities
+resolver policy → cached runtime resolver → validated Executable/Field → libxposed
 ```
 
-Allowed side dependencies:
-
-```text
-Feature → ConfigView
-Feature → FeatureState
-Feature → DiagnosticSink
-Manager → ConfigStore / framework service
-Binding laboratory → DexKit
-```
-
-Forbidden:
-
-```text
-Feature → Vector/libxposed
-Feature → DexKit
-Feature → obfuscated YouTube symbols
-Feature → reflection Method/Field
-Feature → raw SharedPreferences/storage
-Feature → global service locator
-Feature → release-hardening machinery
-```
+Conventional code must not contain feature IDs, ad patterns, category policy, setting-specific branches, handler maps, or target behavior decisions. It may contain reusable reflection/DexKit, networking, scheduling, UI, cache, diagnostics, and libxposed adapters.

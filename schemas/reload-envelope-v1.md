@@ -1,18 +1,10 @@
 # ReloadEnvelope v1
 
-A cross-generation state envelope.
+API-102 `savedInstanceState` carries one `Object[2]`:
 
-```text
-schema_version
-reload_epoch
-target_manifest_digest
-config_generation
-config_value_blob
-feature_state_records[]
-diagnostic_counters[]
-```
+1. target `android.content.pm.ApplicationInfo`;
+2. target `java.lang.ClassLoader`.
 
-Every payload type must be explicitly whitelisted as classloader-neutral.
-
-No project implementation object, callback, thread, HookHandle, or frontend/runtime
-service object may be embedded.
+Project classes, hook handles, listeners, configuration snapshots, and feature state are
+not transferred. Framework-provided old handles are cleanup input only. Invalid shape
+unhooks old handles, disables behavior, and reports failure.

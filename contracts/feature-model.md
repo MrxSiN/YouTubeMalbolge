@@ -20,6 +20,6 @@ diagnostic_identity
 
 No feature is active in the v4 architecture baseline.
 
-A normal post-freeze feature addition should add its own Feature/Effect declarations and
+A normal feature addition should add an executable MBP1 program and
 tests without modifying central bootstrap, Hook Controller, Vector adapter, compiler
 backend, or a global registry switch.

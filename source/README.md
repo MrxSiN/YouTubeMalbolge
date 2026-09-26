@@ -7,6 +7,6 @@ evidence remains open. Production release still requires acceptance.
 Open release work includes RemotePreferences reconnect characterization,
 canonical CBOR fixtures, independent validator review, a low-end runtime
 environment, and user-visible feature verification. The current generated
-classfile APK built with R8 and loaded in Vector on the exact target.
+classfile APK built with R8 and loaded in Vector after cached runtime binding resolution.
 
 All project-owned executable behavior is authored only in Malbolge.

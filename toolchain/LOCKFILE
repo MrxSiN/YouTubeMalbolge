@@ -1,5 +1,5 @@
-architecture-generation=4
-architecture-revision=phase0-2026-09-23
+architecture-generation=5
+architecture-revision=mbp1-runtime-resolution-2026-09-26
 
 vector-release=v2.2
 vector-release-commit=88f8e1f
@@ -11,9 +11,10 @@ libxposed-api-vector-submodule-commit=39cac0845771547c9c67a3e3ce255af110a54a0e
 libxposed-service=102.0.0
 libxposed-service-vector-submodule-commit=3318940876192e29cf6ab07637e899e22a87ebf0
 
-dexkit-version=2.2.0
-dexkit-release-commit=ffa6c51
-dexkit-scope=build-only
+dexkit-version=2.3.0
+dexkit-release-commit=c9cd12a14b75409bebd2f73e4dfc5ff575df3eb8
+dexkit-scope=runtime-cold-resolution-and-binding-lab
+dexkit-runtime-resolution=enabled
 
 android-gradle-plugin=9.4.1
 gradle=9.6.0
@@ -32,11 +33,13 @@ malbolge-reference-source-sha256=fe29a717f9f684d6cc81d5c63273d446d9c65fec73e6216
 malbolge-source-generator=zb3/malbolge-tools
 malbolge-source-generator-commit=b1768486a0d28005e28072a1847c29275a75696f
 malbolge-source-generator-license=MIT
+malbolge-source-generator-runtime=malbolge-vm@1.0.4
+malbolge-source-generator-runtime-integrity=sha512-ut4liIibYMiEdpq+t7/dfct0gFCT65zlFa+uamc9TOTRungXEu1/WAEsFtPW/Cbee1i9YwYpC70M8PHlUPXv+A==
 malbolge-input-instruction-project-units=prohibited
 malbolge-min-logical-source-words=2
 malbolge-source-encoding=ascii
 malbolge-locale=C
-malbolge-reference-evaluator-sha256=7184c3b4376500b7b061ce8afc5a0f90f13e75d5f0b0092b0fa20bdb4f633e01
+malbolge-reference-evaluator-sha256=857d18163fd33fe47e9719315bd7c218dd5294366635dc841acd7247e676e73f
 asm-version=9.9.1
 asm-jar-sha256=6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd
 malbolge-max-unit-bytes=59049
@@ -63,11 +66,13 @@ normal-target-ready-callback=onPackageReady
 project-java-entry-count=1
 
 runtime-backend=generated-jvm-classfiles-to-r8-d8-dex
-runtime-dexkit=false
-runtime-resolution-cache=false
+runtime-dexkit=2.3.0
+runtime-resolution-cache=descriptor-v3
 project-native-control-plane=false
 startup-plan-vm=false
+startup-phase-ordering=aot-early-normal-lazy
+hook-install-atomicity=malbolge-group
 post-r8-semantic-dex-rewriter=false
 
-auto-hot-reload=false-until-device-acceptance
+auto-hot-reload=api102-clean-generation
 architecture-freeze=development-lifted-release-gated

@@ -1,8 +1,12 @@
 # BindingSpecs
 
-Ten Malbolge units provide thirty BindingSpecs for exact YouTube `21.38.130`.
-Each Endpoint has one binding. DexKit validation and the verified set are in
+Ten Malbolge units provide thirty BindingSpecs whose fallback descriptors originate
+from YouTube `21.38.130`. Each Endpoint has one binding. DexKit validation and the verified set are in
 `phase0/BINDING_LAB_RESULTS.md` and `target/current/verified-binding-set.json`.
+
+At runtime these specifications feed the generic cached resolver. Exact descriptors are
+tried cheaply; renamed members proceed through narrow then structural DexKit search.
+Only one hard-valid above-threshold candidate is accepted.
 
 `binding_sponsorblock_player.mal` provides the four SponsorBlock BindingSpecs
 (player controller constructor, video stage, playback progress constructor, seek).
@@ -13,4 +17,4 @@ members, including the target row layout resource name. The row icon comes from
 the module APK.
 
 `binding_shorts_ad_feed.mal` binds two Shorts adapter item insertion methods
-and the ad predicate for the exact target.
+and the ad predicate fallback descriptor for the reference fixture.

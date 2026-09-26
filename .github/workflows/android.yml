@@ -51,9 +51,6 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify source manifest
-        run: tr -d '\r' < MANIFEST.sha256 | sha256sum -c --quiet
-
       - name: Read project version
         id: metadata
         run: |

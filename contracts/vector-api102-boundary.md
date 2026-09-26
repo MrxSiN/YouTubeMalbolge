@@ -10,22 +10,17 @@ The adapter surface is intentionally narrow:
 ```text
 ModuleLifecycle
 HookInstall
-HookReplace
 HookRemove
 HookIdentity
 RemotePreferencesAccess
 FrameworkLog
-HotReloadLifecycle
 ```
 
 Feature semantics cannot access these directly.
 
 ## Framework facts adopted by the architecture
 
-Vector v2.2 stable integrates libxposed API 102 and documents in-process module
-hot reload plus atomic replacement of individual hookers.
-
-The project therefore uses API-102 hook IDs as a runtime ABI.
+The project uses libxposed API 102 hook IDs as a runtime ABI.
 
 ## Hook identity
 
@@ -33,7 +28,7 @@ Each physical hook receives a stable opaque `HookAbiId`.
 
 Rules:
 
-- stable across hot-reload-compatible generations;
+- stable within one generated module version;
 - not derived from semantic names in the shipped artifact;
 - not remapped by release diversification within a reload epoch;
 - unique per physical executable + hook phase/contract;
@@ -48,13 +43,10 @@ is the final target-process safety boundary.
 
 ## Lifecycle use
 
-Initial load owns target/process/config/binding validation and hook installation.
-
-Hot reload owns only generation replacement. It MUST NOT silently pretend that the
-whole target lifecycle has restarted.
-
-The exact API-102 callback ordering and old-handle visibility are verified by the
-architecture spike before `autoHotReload=true` is enabled.
+`onPackageReady` owns package/config/resolver initialization and hook installation.
+`onHotReloading` transfers only Android/JDK objects, detaches listeners, and removes the
+old generation. `onHotReloaded` cleans framework-reported old handles and rebuilds from
+the saved target context. No project class crosses the generation boundary.
 
 ## No framework capability leakage
 

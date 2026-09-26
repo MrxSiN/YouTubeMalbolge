@@ -115,17 +115,9 @@ def evaluate(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
-    parser.add_argument("--max-source-bytes", type=int, default=59049)
-    parser.add_argument("--max-steps", type=int, default=5_000_000)
-    parser.add_argument("--max-output-bytes", type=int, default=1_048_576)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    result = evaluate(
-        args.source.read_bytes(),
-        max_source_bytes=args.max_source_bytes,
-        max_steps=args.max_steps,
-        max_output_bytes=args.max_output_bytes,
-    )
+    result = evaluate(args.source.read_bytes())
     if args.output:
         args.output.write_bytes(result)
     else:

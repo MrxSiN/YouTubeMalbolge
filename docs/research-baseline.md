@@ -1,5 +1,8 @@
 # v4 Phase-0 Research Baseline — 2026-09-23
 
+Historical research only. ADR-040 and the current contracts supersede its target and
+lifecycle design assumptions.
+
 ## Primary sources
 
 ### Vector
@@ -73,11 +76,11 @@ The example demonstrates manager-side RemotePreferences and explicit hot reload 
 Verified:
 
 ```text
-latest stable = 2.2.0
-release commit = ffa6c51
+latest stable = 2.3.0
+release commit = c9cd12a14b75409bebd2f73e4dfc5ff575df3eb8
 ```
 
-DexKit 2.2 improves matcher/query performance and concurrent host-side bridge access.
+DexKit 2.3 improves cache/query memory use, zero-copy loading, and shared-pool cleanup.
 
 ### Android build toolchain
 

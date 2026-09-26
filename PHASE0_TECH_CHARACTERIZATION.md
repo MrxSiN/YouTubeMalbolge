@@ -32,8 +32,8 @@ remain pending.
 - API 102 supports `autoHotReload=true`.
 - official libxposed R8 rules adapt `java_init.list` and preserve/allow obfuscation of
   the module entry.
-- DexKit latest stable is 2.2.0, commit `ffa6c51`.
-- DexKit 2.2 improves query performance and host-side concurrent querying.
+- DexKit latest stable is 2.3.0, commit `c9cd12a14b75409bebd2f73e4dfc5ff575df3eb8`.
+- DexKit 2.3 reduces allocation/copy overhead and fixes shared-pool cleanup crashes.
 - current Android stable AGP is 9.4.1.
 - AGP 9.4 supports compile API 37 and uses Gradle 9.6.0 / JDK 17 compatibility baseline.
 
@@ -44,14 +44,14 @@ remain pending.
 - exactly one project Xposed entry.
 - static scope only `com.google.android.youtube`.
 - global `exceptionMode=protective`.
-- `autoHotReload=false` until device acceptance, then `true`.
+- `autoHotReload=true` after device acceptance.
 - stable opaque HookAbiId for every physical project hook.
 - injected runtime config reads from framework RemotePreferences once/low-frequency,
   compiles immutable ConfigSnapshot, then hot callbacks read the snapshot only.
 - manager writes the same RemotePreferences via `XposedService`.
 - one build backend: generated JVM classfiles → AGP/R8/D8 → DEX.
 - AGP 9.4.1 / Gradle 9.6.0 / JDK 17 / compileSdk 37 / targetSdk 37.
-- DexKit 2.2.0 remains build-lab-only.
+- DexKit 2.3.0 serves bounded runtime resolution and the binding lab.
 
 ### Still requires empirical/device characterization
 
@@ -309,26 +309,25 @@ max(
 )
 ```
 
-It is frozen only after the exact target artifact is selected.
+Historical note: this freeze rule was superseded by ADR-040 runtime resolution.
 
 ---
 
 ## 9. DexKit result
 
-DexKit 2.2.0 is the current stable release.
+DexKit 2.3.0 is the current stable release.
 
-Relevant 2.2 properties:
+Relevant 2.3 properties:
 
 - composite matchers (`allOf`, `anyOf`, `noneOf`, `not`);
 - improved query/native matcher performance;
-- concurrent access to one bridge from host-side analysis;
-- reduced native binary size;
-- corrected method-definition behavior.
+- optimized native caches, string queries, and zero-copy eligible DEX loading;
+- fixed shared thread-pool cleanup and cache isolation defects.
 
-v4 uses these benefits only in the build laboratory.
+The runtime uses one bounded bridge only on descriptor-cache misses, then closes it.
 
-`DexKitCacheBridge` from 2.1 remains irrelevant because v4 performs release-time analysis
-of one exact target rather than repeated runtime lookup.
+`DexKitCacheBridge` remains unnecessary because the project validates and persists
+descriptors in its own app/version-scoped cache.
 
 ---
 

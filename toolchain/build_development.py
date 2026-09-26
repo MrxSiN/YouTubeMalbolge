@@ -2,32 +2,48 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
 from urllib.parse import quote
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
-from validate_units import ROOT, evaluate_units, validate
+from validate_units import ROOT, evaluate_all, validate, validate_programs
+from mbx_program import OPCODES, code_uses, disassemble
 
 GENERATED_ENTRY = "io.github.mrxsin.ytmalbolge.generated.Entry"
 ACCESS = {"PUBLIC": 1, "PUBLIC_FINAL": 17, "PROTECTED_FINAL": 20, "PUBLIC_STATIC": 9}
-HOOK_HANDLERS = {
-    "hide_view", "filter_litho_ads", "skip_void", "capture_receiver", "observe_video_id",
-    "skip_segments", "inject_settings_entry",
-    "filter_shorts_ads",
-}
-SEGMENT_RUNTIME_CLASSES = 3
+SEGMENT_RUNTIME_CLASSES = 4
 SETTINGS_RUNTIME_CLASSES = 5
 MODULE_PACKAGE = "io.github.mrxsin.ytmalbolge"
 
 
-def verified_bindings(bindings: dict[str, dict]) -> str:
-    """Check every BindingSpec against the exact Verified Target Binding Set; return its digest."""
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def aggregate_hash(paths: list[Path]) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        digest.update(path.relative_to(ROOT).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(bytes.fromhex(sha256(path)))
+    return digest.hexdigest()
+
+
+def zip_bytes(archive: ZipFile, name: str, content: bytes) -> None:
+    entry = ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    entry.compress_type = ZIP_DEFLATED
+    entry.external_attr = 0o100644 << 16
+    archive.writestr(entry, content)
+
+
+def validate_fallback_fixtures(bindings: dict[str, dict]) -> str:
+    """Check checked-in fallback descriptors against their regression fixture."""
     verified = json.loads((ROOT / "target/current/verified-binding-set.json").read_text(encoding="utf-8"))
     by_endpoint = {r["endpoint_id"]: r for r in verified["bindings"]}
     if set(by_endpoint) != set(bindings) or verified["schema"] != "VBS-1":
@@ -60,102 +76,115 @@ def member_fields(binding: dict) -> list[str]:
     shape = binding["hard_shape_constraints"]
     if shape["access"] not in ACCESS or shape["static"] != (shape["access"] == "PUBLIC_STATIC"):
         raise ValueError("unsupported physical member shape")
+    counts = [int(match.group(1)) for evidence in binding["positive_evidence"]
+              if (match := re.search(r"(?:opcodeCount|insns_size)=(\d+)", evidence))]
+    if len(set(counts)) > 1:
+        raise ValueError("conflicting opcode counts")
     return [
         binding["expected_member_kind"], shape["class_descriptor"][1:-1].replace("/", "."),
         shape["member_name"], shape["member_descriptor"], str(ACCESS[shape["access"]]),
-        shape["superclass"][1:-1].replace("/", "."),
+        shape["superclass"][1:-1].replace("/", "."), str(counts[0] if counts else -1),
     ]
 
 
-def plan_lines(records: list[dict], target_hash: str, active: bool) -> list[list[str]]:
+def plan_lines(records: list[dict], target_hash: str, programs) -> list[list[str]]:
     """Lower validated CMG records plus bindings to the backend's Logical Module Plan lines."""
-    effects = sorted((r for r in records if r["kind"] == "Effect"), key=lambda r: r["endpoint_id"])
-    configs = sorted((r for r in records if r["kind"] == "ConfigItem"), key=lambda r: r["config_id"])
     bindings = {r["endpoint_id"]: r for r in records if r["kind"] == "BindingSpec"}
-    endpoints = {r["endpoint_id"]: r for r in records if r["kind"] == "Endpoint"}
-    sources = {r["source_id"]: r for r in records if r["kind"] == "SegmentSource"}
-    if not effects:
-        raise ValueError("no compiled Effect")
-    if len({r["endpoint_id"] for r in effects}) != len(effects):
-        raise ValueError("multiple Effects per Endpoint unsupported")
-    if any(r["value_type"] != "boolean" for r in configs):
-        raise ValueError("unsupported ConfigItem")
-    if any(r["handler_function"] not in HOOK_HANDLERS for r in effects):
-        raise ValueError("unsupported Effect handler")
+    hook_programs = [program for program in programs if program.endpoint_id != "-"]
+    resolver_policies = [program for program in programs if program.group_id == "resolver_policy"]
+    status_policies = [program for program in programs if program.group_id == "status_policy"]
+    config_policies = [program for program in programs if program.group_id == "config_policy"]
+    if len(resolver_policies) != 1 or len(resolver_policies[0].constants) != 7:
+        raise ValueError("one seven-weight resolver policy is required")
+    if len(status_policies) != 1 or len(status_policies[0].constants) != 22:
+        raise ValueError("one twenty-two-field status policy is required")
+    if len(config_policies) != 1 or len(config_policies[0].constants) % 3:
+        raise ValueError("one triple-based config policy is required")
+    configs = [{"storage_group": group, "config_id": key, "default": fallback == "true"}
+               for group, key, fallback in zip(config_policies[0].constants[0::3],
+                                                config_policies[0].constants[1::3],
+                                                config_policies[0].constants[2::3])]
+    configs.sort(key=lambda item: item["config_id"])
+    if any(value not in {"true", "false"} for value in config_policies[0].constants[2::3]):
+        raise ValueError("config defaults must be boolean")
     config_index = {r["config_id"]: index for index, r in enumerate(configs)}
+    try:
+        resolver_weights = [str(int(value)) for value in resolver_policies[0].constants]
+    except ValueError as error:
+        raise ValueError("resolver weights must be integers") from error
+    lines = [["target", target_hash], ["resolver", *resolver_weights]]
+    program_member_ids = sorted({member for program in hook_programs for member in program.members})
+    program_member_index = {member: index for index, member in enumerate(program_member_ids)}
 
-    lines = [["target", target_hash], ["active", str(active).lower()]]
-    (diagnostic,) = (r for r in records if r["kind"] == "DiagnosticPolicy")
-    lines.append(["diagnostic", diagnostic["policy_id"], diagnostic["transport"],
-                  diagnostic["failure_mode"], diagnostic["target_package"],
-                  diagnostic["screen_title"], diagnostic["copy_label"]])
+    lines.append(["diagnostic", *status_policies[0].constants])
     lines += [["config", r["storage_group"], r["config_id"], str(r["default"]).lower()] for r in configs]
     hooked = set()
-    for effect in effects:
-        endpoint_id = effect["endpoint_id"]
-        endpoint = endpoints[endpoint_id]
-        binding = bindings[endpoint_id]
-        if endpoint["operation_class"] not in {"ACTION", "OBSERVE"}:
-            raise ValueError(f"Endpoint cannot be hooked: {endpoint_id}")
-        returns_void = binding["hard_shape_constraints"]["member_descriptor"].endswith(")V")
-        if not returns_void and effect["handler_function"] not in {"inject_settings_entry", "filter_litho_ads", "filter_shorts_ads"}:
-            raise ValueError("unsupported Endpoint")
-        arguments = []
-        if effect["handler_function"] == "skip_segments":
-            arguments = [str(binding["hard_shape_constraints"]["argument_roles"]["position_ms"])]
-        elif effect["handler_function"] == "observe_video_id":
-            arguments = [binding["hard_shape_constraints"]["result_fields"]["video_id"]]
-        elif effect["handler_function"] == "filter_litho_ads":
-            roles = effect["call_roles"]
-            context = bindings[roles["identifier"]]["hard_shape_constraints"]
-            factory = bindings[roles["factory"]]["hard_shape_constraints"]
-            value = bindings[roles["empty_value"]]["hard_shape_constraints"]
-            arguments = [context["class_descriptor"][1:-1], context["member_name"],
-                         context["superclass"][1:-1], factory["class_descriptor"][1:-1],
-                         factory["member_name"], factory["member_descriptor"],
-                         factory["superclass"][1:-1], value["class_descriptor"][1:-1],
-                         value["member_name"], value["superclass"][1:-1],
-                         value["member_descriptor"], *effect["component_patterns"]]
-            hooked.update(roles.values())
-        elif effect["handler_function"] == "filter_shorts_ads":
-            roles = effect["call_roles"]
-            arguments = member_fields(bindings[roles["predicate"]])
-            hooked.update(roles.values())
-        guard = effect["config_guard"]
-        lines.append(["hook", *member_fields(binding), effect["handler_function"],
-                      str(config_index[guard] if guard is not None else -1), f"ytm.{endpoint_id}.v1", *arguments])
+    for program in sorted(hook_programs, key=lambda item: item.endpoint_id):
+        binding = bindings[program.endpoint_id]
+        guard = -1 if program.config_id is None else config_index[program.config_id]
+        lines.append([
+            "hook", *member_fields(binding), str(guard),
+            f"ytm.{program.endpoint_id}.v2", program.group_id, "MBP1", str(program.startup),
+            "1" if program.fail_open else "0",
+            str(len(program.constants)), *program.constants,
+            str(len(program.members)), *(str(program_member_index[item]) for item in program.members),
+            program.code.hex(),
+        ])
+        hooked.add(program.endpoint_id)
+
+    for endpoint_id in program_member_ids:
+        lines.append(["pmember", endpoint_id, *member_fields(bindings[endpoint_id])])
         hooked.add(endpoint_id)
 
-    for effect in (e for e in effects if e["handler_function"] == "skip_segments"):
-        (seek_id,) = effect["call_endpoints"]
+    range_programs = [p for p in hook_programs if code_uses(p.code, OPCODES["ASYNC_LOAD"])]
+    if range_programs:
+        if len(range_programs) != 1:
+            raise ValueError("range service requires one authority program")
+        service = range_programs[0]
+        if len(service.members) != 1 or len(service.constants) < 23 or len(service.constants[21:]) % 2:
+            raise ValueError("invalid range service ABI")
+        seek_id = service.members[0]
         seek = bindings[seek_id]
         lines.append(["seek", *member_fields(seek), seek["hard_shape_constraints"]["enum_constant"]])
+        categories = list(service.constants[21::2])
+        guards = list(service.constants[22::2])
+        query = "?" + quote(service.constants[10], safe="") + "="
+        query += quote(json.dumps(categories, separators=(",", ":")), safe="")
+        query += "&" + quote(service.constants[11], safe="") + "=" + quote(service.constants[17], safe="")
+        lines.append(["segments", *service.constants[2:10], query, *service.constants[12:21]])
+        lines += [["category", category, str(config_index[guard])]
+                  for category, guard in zip(categories, guards)]
         hooked.add(seek_id)
-    for effect in (e for e in effects if e["handler_function"] == "observe_video_id"):
-        source = sources[effect["segment_source"]]
-        categories = [c["category"] for c in source["categories"]]
-        query = "?categories=" + quote(json.dumps(categories, separators=(",", ":")), safe="")
-        query += "&actionType=" + quote(source["action_type"], safe="")
-        lines.append(["segments", source["api_origin"], str(source["hash_prefix_length"]),
-                      str(source["connect_timeout_ms"]), str(source["read_timeout_ms"]), query,
-                      source["action_type"]])
-        lines += [["category", c["category"], str(config_index[c["config_guard"]])] for c in source["categories"]]
-    pages = {r["page_id"]: r for r in records if r["kind"] == "SettingsPage"}
-    for effect in (e for e in effects if e["handler_function"] == "inject_settings_entry"):
-        page = pages[effect["settings_page"]]
-        for role, endpoint_id in sorted(effect["call_roles"].items()):
-            if endpoint_id not in hooked:
-                lines.append(["member", endpoint_id, *member_fields(bindings[endpoint_id])])
-                hooked.add(endpoint_id)
+    ui_programs = [p for p in hook_programs if code_uses(p.code, OPCODES["UI_APPLY"])]
+    if ui_programs:
+        if len(ui_programs) != 1:
+            raise ValueError("UI model requires one authority program")
+        ui = ui_programs[0]
+        roles = ("owner", "screen", "context", "intent", "layout", "icon_space", "set_icon",
+                 "new_preference", "set_key", "set_title", "set_summary", "set_order",
+                 "group_add", "group_find")
+        if len(ui.members) != len(roles):
+            raise ValueError("invalid UI model ABI")
+        for role, endpoint_id in zip(roles, ui.members):
+            lines.append(["member", endpoint_id, *member_fields(bindings[endpoint_id])])
+            hooked.add(endpoint_id)
             lines.append(["role", role, endpoint_id])
-        lines.append(["page", page["entry_key"], page["title"], str(page["entry_order"]),
-                      MODULE_PACKAGE, page["entry_summary"], page["entry_icon"]])
-        layouts = bindings[effect["call_roles"]["layout"]]["hard_shape_constraints"]["resource_layouts"]
-        lines.append(["layouts", layouts["row"]])
-        for section in page["sections"]:
-            lines.append(["section", section["section_id"], section["title"]])
-            lines += [["item", section["section_id"], str(config_index[item["config_id"]]), item["title"]]
-                      for item in section["items"]]
+        values = list(ui.constants)
+        if len(values) < 10:
+            raise ValueError("incomplete UI model")
+        lines.append(["page", values[0], values[1], values[2], MODULE_PACKAGE, values[3], values[4],
+                      values[6], values[7], values[8]])
+        lines.append(["layouts", values[5]])
+        section_count = int(values[9]); at = 10; exposed = []
+        for _ in range(section_count):
+            section_id, title, item_count = values[at], values[at + 1], int(values[at + 2]); at += 3
+            lines.append(["section", section_id, title])
+            for _ in range(item_count):
+                config_id, title = values[at], values[at + 1]; at += 2
+                lines.append(["item", section_id, str(config_index[config_id]), title])
+                exposed.append(config_id)
+        if at != len(values) or sorted(exposed) != sorted(config_index):
+            raise ValueError("UI model must expose every config exactly once")
     if hooked != set(bindings):
         raise ValueError(f"bound Endpoints without backend use: {sorted(set(bindings) - hooked)}")
     if any("\t" in field or "\n" in field for line in lines for field in line):
@@ -163,15 +192,18 @@ def plan_lines(records: list[dict], target_hash: str, active: bool) -> list[list
     return lines
 
 
-def build(*, device_test: bool = False) -> Path:
-    graph = validate(evaluate_units())
+def build() -> Path:
+    frames, programs = evaluate_all()
+    graph = validate(frames)
+    validate_programs(programs, graph)
     records = graph["records"]
     bindings = {r["endpoint_id"]: r for r in records if r["kind"] == "BindingSpec"}
-    target_hashes = {r["target_base_sha256"] for r in bindings.values()}
-    if len(target_hashes) != 1:
-        raise ValueError("Bindings disagree on target")
-    target_hash = target_hashes.pop()
-    digest = verified_bindings(bindings)
+    validate_fallback_fixtures(bindings)
+    authority = hashlib.sha256()
+    for path in sorted((ROOT / "source").rglob("*.mal")):
+        authority.update(path.relative_to(ROOT).as_posix().encode("ascii"))
+        authority.update(hashlib.sha256(path.read_bytes()).digest())
+    authority_digest = authority.hexdigest()
 
     asm_jar = os.environ.get("MALBOLGE_ASM_JAR")
     asm_files = [Path(asm_jar)] if asm_jar else sorted(
@@ -187,6 +219,8 @@ def build(*, device_test: bool = False) -> Path:
     out = ROOT / "build/generated"
     compiler_classes = out / "compiler"
     runtime_classes = out / "classes"
+    if compiler_classes.exists():
+        shutil.rmtree(compiler_classes)
     compiler_classes.mkdir(parents=True, exist_ok=True)
     if runtime_classes.resolve().parent != out.resolve():
         raise ValueError("generated class path escapes the build directory")
@@ -198,20 +232,7 @@ def build(*, device_test: bool = False) -> Path:
          *sorted(str(path) for path in (ROOT / "toolchain/backend").glob("*.java"))],
         check=True,
     )
-    target_lock = (ROOT / "target/current/target-release.lock.yml").read_text(encoding="utf-8")
-    target_bound = "state: BOUND" in target_lock
-    if f"verified_binding_set_digest: {digest}" not in target_lock:
-        raise ValueError("target lock binding set digest mismatch")
-    if device_test and not target_bound:
-        raise ValueError("device test requires a bound exact target")
-    bindings_enabled = target_bound and (
-        device_test
-        or (
-            "production_hooks_enabled: true" in target_lock
-            and "production_features_enabled: true" in target_lock
-        )
-    )
-    lines = plan_lines(records, target_hash, bindings_enabled)
+    lines = plan_lines(records, authority_digest, programs)
     plan = out / "plan.tsv"
     plan.write_text("".join("\t".join(line) + "\n" for line in lines), encoding="utf-8")
     subprocess.run(
@@ -223,10 +244,55 @@ def build(*, device_test: bool = False) -> Path:
     segment_classes = SEGMENT_RUNTIME_CLASSES if any(line[0] == "seek" for line in lines) else 0
     settings_classes = SETTINGS_RUNTIME_CLASSES if any(line[0] == "page" for line in lines) else 0
     classes = sorted(runtime_classes.rglob("*.class"))
-    litho_classes = int(any(line[0] == "hook" and line[7] == "filter_litho_ads" for line in lines))
-    shorts_classes = int(any(line[0] == "hook" and line[7] == "filter_shorts_ads" for line in lines))
-    if len(classes) != 8 + hooks + segment_classes + settings_classes + litho_classes + shorts_classes:
+    member_classes = int(any(line[0] == "pmember" for line in lines))
+    if len(classes) != 7 + hooks + segment_classes + settings_classes + member_classes:
         raise ValueError("unexpected generated class count")
+    hook_programs = sorted((p for p in programs if p.endpoint_id != "-"), key=lambda p: p.endpoint_id)
+    hook_index = {program.unit_id: index for index, program in enumerate(hook_programs)}
+    provenance = []
+    review = []
+    for program in sorted(programs, key=lambda p: p.unit_id):
+        source = next(path for path in (ROOT / "source").rglob("*.mal")
+                      if path.stem == program.unit_id.replace(".", "_"))
+        generated = []
+        if program.unit_id in hook_index:
+            generated_path = runtime_classes / MODULE_PACKAGE.replace(".", "/") / f"generated/ProgramHooker{hook_index[program.unit_id]}.class"
+            generated.append({"class": f"{MODULE_PACKAGE}.generated.ProgramHooker{hook_index[program.unit_id]}",
+                              "sha256": sha256(generated_path)})
+        provenance.append({
+            "unit": program.unit_id,
+            "source": source.relative_to(ROOT).as_posix(),
+            "source_sha256": sha256(source),
+            "program_sha256": program.body_sha256,
+            "generated": generated,
+        })
+        review += disassemble(program) + [""]
+    raw_sources = sorted((ROOT / "source").rglob("*.mal"))
+    compiler_sources = [ROOT / "toolchain/build_development.py", ROOT / "toolchain/mbx_program.py",
+                        ROOT / "toolchain/validate_units.py", *sorted((ROOT / "toolchain/backend").glob("*.java"))]
+    apk_inputs = [ROOT / "app/build.gradle.kts", ROOT / "app/src/main/AndroidManifest.xml",
+                  ROOT / "app/src/main/java/io/github/mrxsin/ytmalbolge/RuntimeResolver.java",
+                  ROOT / "toolchain/LOCKFILE"]
+    manifest = {
+        "schema": "MBP-PROVENANCE-2",
+        "authority_sha256": authority_digest,
+        "abi": {"name": "MBP1", "sha256": sha256(ROOT / "toolchain/mbx_program.py")},
+        "evaluator": {"profile": "MBX-CLASSIC-REF/1", "sha256": sha256(ROOT / "toolchain/mbx_eval.py")},
+        "compiler": {"version": "architecture-generation-5", "sha256": aggregate_hash(compiler_sources)},
+        "low_level_ir": {"path": plan.relative_to(ROOT).as_posix(), "sha256": sha256(plan)},
+        "raw_sources": [{"path": path.relative_to(ROOT).as_posix(), "sha256": sha256(path)}
+                        for path in raw_sources],
+        "generated_classfiles": [{"path": path.relative_to(runtime_classes).as_posix(), "sha256": sha256(path)}
+                                 for path in classes],
+        "apk_inputs": [{"path": path.relative_to(ROOT).as_posix(), "sha256": sha256(path)}
+                       for path in apk_inputs],
+        "units": provenance,
+    }
+    provenance_path = out / "provenance.json"
+    provenance_path.write_text(json.dumps(manifest,
+                                           sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    review_path = out / "review.txt"
+    review_path.write_text("\n".join(review), encoding="utf-8")
     jar = out / "module.jar"
     metadata = {
         "META-INF/xposed/java_init.list": GENERATED_ENTRY + "\n",
@@ -236,19 +302,20 @@ def build(*, device_test: bool = False) -> Path:
             "targetApiVersion=102\n"
             "staticScope=true\n"
             "exceptionMode=protective\n"
-            "autoHotReload=false\n"
+            "autoHotReload=true\n"
         ),
     }
     with ZipFile(jar, "w", compression=ZIP_DEFLATED) as archive:
         for path in classes:
-            archive.write(path, path.relative_to(runtime_classes).as_posix())
+            zip_bytes(archive, path.relative_to(runtime_classes).as_posix(), path.read_bytes())
         for name, content in metadata.items():
-            archive.writestr(name, content)
-        archive.write(ROOT / "app/src/main/res/drawable-nodpi/ytm_hellfire.png", "ytm_hellfire.png")
+            zip_bytes(archive, name, content.encode("utf-8"))
+        zip_bytes(archive, "META-INF/ytm/provenance.json", provenance_path.read_bytes())
+        zip_bytes(archive, "META-INF/ytm/review.txt", review_path.read_bytes())
+        zip_bytes(archive, "ytm_hellfire.png",
+                  (ROOT / "app/src/main/res/drawable-nodpi/ytm_hellfire.png").read_bytes())
     return jar
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--device-test", action="store_true", help="enable bound hook in a development APK")
-    print(build(device_test=parser.parse_args().device_test))
+    print(build())

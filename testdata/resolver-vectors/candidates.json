@@ -1,0 +1,20 @@
+{
+  "policy": [100, 30, 20, 20, 20, 40, 60],
+  "cases": [
+    {"name": "fallback-exact", "candidates": [[true, true, true, true, true, true]], "winner": 0},
+    {"name": "renamed-unique", "candidates": [[false, false, false, true, true, true]], "winner": 0},
+    {"name": "changed-descriptor-compatible-shape", "candidates": [[false, false, false, true, true, true]], "winner": 0},
+    {"name": "additional-irrelevant", "candidates": [[false, false, false, true, true, true], [false, false, true, false, false, false]], "winner": 0},
+    {"name": "ambiguous", "candidates": [[false, false, false, true, true, true], [false, false, false, true, true, true]], "winner": null},
+    {"name": "missing", "candidates": [], "winner": null},
+    {"name": "missing-opcode-evidence", "candidates": [[false, false, false, true, true, false]], "winner": null},
+    {"name": "changed-hierarchy", "candidates": [[false, false, false, true, false, true]], "hard_valid": false, "winner": null},
+    {"name": "below-threshold", "candidates": [[false, false, true, false, false, false]], "winner": null}
+  ],
+  "cache": [
+    {"name": "valid", "identity_matches": true, "descriptor_valid": true, "uses_discovery": false},
+    {"name": "stale-target", "identity_matches": false, "descriptor_valid": true, "uses_discovery": true},
+    {"name": "invalid-descriptor", "identity_matches": true, "descriptor_valid": false, "uses_discovery": true},
+    {"name": "invalid-schema", "identity_matches": false, "descriptor_valid": false, "uses_discovery": true}
+  ]
+}

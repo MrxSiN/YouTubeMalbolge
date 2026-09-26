@@ -7,7 +7,7 @@ Decision record: [ADR-039](../adr/ADR-039.md).
 | Unit | Records |
 | --- | --- |
 | `source/40_manager/manager_settings.mal` | One "YouTube Malbolge" entry and a page with Hide ads (3 items) and SponsorBlock (10 items) |
-| `source/70_features/settings_entry.mal` | Feature `settings.entry`, unguarded Effect `inject_settings_entry` |
+| `source/70_features/settings_entry.mal` | Executable MBP1 program that proceeds, applies the generic UI model, and returns |
 | `source/20_semantics/endpoint_settings_entry.mal` | `settings_root` (OBSERVE, after original) and screen access CALL Endpoints |
 | `source/20_semantics/endpoint_preference_api.mal` | Twelve androidx.preference CALL Endpoints |
 | `source/80_bindings/binding_settings_root.mal` | `own.run()V`, field `own.a`, `faw.p()` |
@@ -29,7 +29,7 @@ Decision record: [ADR-039](../adr/ADR-039.md).
 
 ## Device validation — 2026-09-24
 
-Pixel 8 Pro, Vector v2.2, YouTube 21.37.42, `-PdeviceTest=true` build:
+Pixel 8 Pro, Vector v2.2, YouTube 21.37.42, development build (the `-PdeviceTest` flag has since been removed):
 
 - Settings shows one "YouTube Malbolge" row above "Account", using YouTube's row layout.
 - Tapping the row starts `io.github.mrxsin.ytmalbolge/.generated.ManagerActivity`.

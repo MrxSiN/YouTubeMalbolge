@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- Unused build and test scaffolding: the `-PdeviceTest` Gradle flag, the always-true
+  `active` plan flag, the unused `CONFIG` MBP1 opcode (`CONFIG_DYNAMIC` covers it), the
+  `MANIFEST.sha256` CI check, orphan `testdata/` vectors, unconsumed `ci/`,
+  `architecture/` and `packaging/xposed/` files, and schemas for retired formats.
+- `toolchain/bindinglab` is no longer included in the Gradle build.
+
+### Changed
+
+- Each Malbolge source unit is evaluated once per build instead of twice.
+
+## 1.1.0
+
+### Changed
+
+- DexKit 2.3.0 now resolves cache misses in the injected process with obfuscation-safe
+  shorty matching, bounded opcode drift, split/version cache invalidation, and unique-winner fail-open behavior.
+- API-102 automatic hot reload now detaches the old listener and hook generation, then
+  reconstructs configuration, bindings, and hooks without restarting YouTube.
+
 ## 1.0.0
 
 The first release. Bound to exactly one YouTube build, `21.37.42` from Google Play:
@@ -52,8 +75,7 @@ signed release APK installs eleven hooks.
 - README rewritten: features, compatibility, requirements, install, how it works,
   build and design.
 - New record kinds for the Malbolge units: `SegmentSource`, `SettingsPage`, Endpoint
-  class `CALL`, constructor and FIELD bindings, and the handlers `capture_receiver`,
-  `observe_video_id`, `skip_segments` and `inject_settings_entry`.
+  class `CALL`, constructor and FIELD bindings, and the original four callback adapters.
 - The backend reads a tab-separated plan (`build/generated/plan.tsv`) and emits
   `SeekPort`, `SegmentStore`, `SegmentFetch` and the settings classes when a Feature
   needs them. `generateMalbolgeModule` tracks every backend source file.
@@ -148,4 +170,4 @@ Technology characterization:
 
 ### v4 initial architecture baseline — 2026-09-23
 
-- migrated away from v3 runtime DexKit/cache/native-control-plane/plan-VM architecture.
+- historical v4 temporarily used release-time-only binding; ADR-040 supersedes that decision.

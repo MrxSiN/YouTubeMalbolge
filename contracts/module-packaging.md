@@ -16,19 +16,13 @@ Baseline MUST NOT generate `META-INF/xposed/native_init.list`.
 
 ## `module.prop`
 
-Pre-acceptance development:
+Phase-0 hot-reload acceptance passed, so generated metadata is:
 
 ```properties
 minApiVersion=102
 targetApiVersion=102
 staticScope=true
 exceptionMode=protective
-autoHotReload=false
-```
-
-After the Phase-0 hot-reload acceptance suite passes:
-
-```properties
 autoHotReload=true
 ```
 

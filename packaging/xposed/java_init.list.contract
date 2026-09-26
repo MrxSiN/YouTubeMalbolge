@@ -1,3 +1,0 @@
-Exactly one generated, backend-produced module entry class.
-The physical class name is not frozen at architecture time.
-R8 must adapt this resource if it obfuscates the entry class.

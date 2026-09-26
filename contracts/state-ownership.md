@@ -1,16 +1,13 @@
 # State Ownership Contract
 
-| State | Owner | Mutability |
-|---|---|---|
-| process lifecycle | Process Coordinator | serialized state machine |
-| target identity | Target Gate | immutable per process |
-| TargetBindingSet | Binding Materializer | immutable |
-| physical hook handles | Hook Controller | controlled mutation |
-| runtime configuration | Config Publisher | immutable snapshots, atomic reference |
-| feature-owned state | declared FeatureState owner | contract-specific |
-| endpoint circuit state | Endpoint Runtime | bounded atomic state |
-| diagnostics buffer | Diagnostic Sink | bounded |
-| reload transfer envelope | Reload Coordinator | one-generation handoff |
-| binding evidence/history | build laboratory | build-only/private |
+| State | Owner |
+|---|---|
+| installed target identity and descriptor cache | generic RuntimeResolver |
+| physical hook handles and failed-group set | generated HookController |
+| runtime settings snapshot | generated ConfigSnapshot |
+| AOT program object slots | generated StateSlots |
+| asynchronous compact interval table | generated generic table bridge |
+| diagnostic snapshot | module-app SharedPreferences receiver |
 
-No subsystem may mutate another owner's state by reaching through internal objects.
+Hot callbacks read only generated in-memory state. They do not perform DexKit, network,
+disk, JSON parsing, RemotePreferences access, or Malbolge interpretation.

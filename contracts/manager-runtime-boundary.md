@@ -10,8 +10,7 @@ Owns:
   process);
 - target/module status display;
 - bounded diagnostic display/export;
-- explicit hot-reload request/control when framework service supports it;
-- restart-required messaging;
+- reload failure messaging;
 - license/privacy information.
 
 Baseline manager is user-driven. It has no compatibility daemon and no background
@@ -21,22 +20,20 @@ resolver.
 
 Owns:
 
-- exact target/process gate;
+- package/process gate and cached runtime resolution;
 - remote config listener;
 - immutable ConfigSnapshot;
-- binding materialization;
+- cached binding validation and bounded DexKit discovery on cache miss;
 - Hook Controller;
 - Endpoint pipelines;
 - feature state/effects;
 - bounded diagnostics.
 
-It does not run DexKit, network services, compatibility scans, or persistent storage
-polling.
+DexKit runs only during cold resolution and closes after installation. SponsorBlock
+transport runs on a daemon worker after a video-ID change. Hot callbacks perform none of
+that work.
 
 ## Multi-process rule
 
-Each allowed YouTube process is an independent lifecycle/reload unit.
-
-Do not assume a framework hot reload is transactionally atomic across multiple Android
-processes. Features requiring cross-process consistency must define a restart boundary
-or explicit process-independent semantics.
+Each allowed YouTube process is an independent lifecycle unit. API-102 hot reload rebuilds
+module code and bindings inside each active scoped process.

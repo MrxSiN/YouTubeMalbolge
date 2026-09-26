@@ -13,11 +13,12 @@ Audit and Phase-0 additions:
 - ADR-029 one generated entry + static YouTube scope
 - ADR-030 no executable project source before freeze
 - ADR-031 canonical `onPackageReady` target-ready lifecycle
-- ADR-032 reference runtime environment support boundary
+- ADR-032 reference runtime environment support boundary (target-selection part superseded by ADR-040)
 - ADR-033 RemotePreferences sole persistent configuration store
 - ADR-034 current stable Android build toolchain
-- ADR-035 no dependency on lifecycle replay after hot reload
+- ADR-035 hot reload does not depend on lifecycle replay
 - ADR-036 Ben Olmstead 1998 interpreter defines MBX-CLASSIC-REF/1
 - ADR-037 Phase-0 characterization probe is non-product code
 - ADR-038 SponsorBlock segment requests are an opt-in feature network path
+- ADR-040 Malbolge AOT authority and dynamic runtime resolution (supersedes exact-version restrictions)
 - ADR-039 Settings entry in YouTube, edits in the generated manager

@@ -1,22 +1,16 @@
-# Future Malbolge Source Ownership Map
+# Malbolge Source Ownership Map
 
-Development source is authorized as of 2026-09-23. Open gates remain release gates.
-
-Future ownership:
-
-| Area | Sole responsibility |
+| Area | Authority |
 |---|---|
-| `00_boot` | generated entry semantics, exact target/process gates, process lifecycle requests |
-| `10_vector` | thin API-102 adapter, Hook Controller, reload/config transport |
-| `20_semantics` | Endpoint mapping, effect pipeline, binding materialization, admitted capabilities |
-| `30_config` | config schema validation/migration/snapshot construction |
-| `40_manager` | manager settings/status/diagnostics/reload-control semantics |
-| `50_diag` | bounded diagnostic/circuit/export semantics |
-| `60_packaging` | package/scope/layout/provenance semantic declarations |
-| `70_features` | post-freeze product Feature/Effect units |
-| `80_bindings` | post-target-selection build-only BindingSpecs |
+| `10_vector` | endpoint declarations and generic framework capabilities |
+| `20_semantics` | graph relationships and endpoint ownership |
+| `30_config` | setting IDs, storage groups, defaults |
+| `40_manager` | settings page structure, labels, ordering, feature mapping |
+| `50_diag` | status vocabulary, compatibility text, failure policy |
+| `60_resolver` | scoring weights, minimum confidence, ambiguity policy |
+| `70_features` | executable hook/filter/state/range decisions |
+| `80_bindings` | target fingerprints, hard shapes, fallback descriptors |
 
-An area's directory under `source/` is created with its first Malbolge unit;
-`00_boot`, `10_vector` and `60_packaging` have none yet.
-
-One source area cannot redefine another area's authoritative state/metadata.
+All behavior-area `.mal` files evaluate to MBX2-framed MBP1 executable programs.
+Generated plans, review disassembly, classfiles, and provenance are non-authoritative.
+Conventional code may expose only generic compiler and platform mechanisms.

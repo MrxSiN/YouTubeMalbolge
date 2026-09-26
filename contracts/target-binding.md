@@ -1,58 +1,7 @@
-# Target Binding Contract
+# Runtime binding contract
 
-Target discovery is a release-engineering activity, never a target-process service.
+Each Endpoint has Malbolge-derived fingerprints plus a checked-in fallback descriptor.
 
-```text
-Malbolge-originated BindingSpec
-+ exact Reference Target Artifact Set
-+ DexKit 2.2 build laboratory
-→ candidate set
-→ hard structural/evidence predicates
-→ post-resolution validation
-→ uniqueness proof
-→ Verified Target Binding Set
-```
+Resolution tiers are: package/process gate; validated persistent cache; narrow DexKit query; structural fallback; fail open. Candidate weights and threshold come from `source/60_resolver/resolver_policy.mal`; per-member access, parameter count, superclass, descriptor shape, and opcode-count evidence comes from raw Malbolge binding units. A unique winner must pass hard reflection validation. Ties install nothing.
 
-## One implementation path
-
-Each Endpoint has exactly one authoritative BindingSpec/pipeline.
-
-Allowed inside that pipeline:
-
-- multiple required strings/literals;
-- type/signature constraints;
-- caller/callee evidence;
-- field relationships;
-- negative evidence;
-- hard post-resolution validators.
-
-Prohibited:
-
-- Strategy A → Strategy B → Strategy C fallback resolver chain;
-- accept-first-candidate behavior;
-- “best score wins” without uniqueness proof;
-- runtime scanning when build-time binding failed.
-
-A score may order investigation candidates, but production acceptance is boolean:
-**exactly one candidate must satisfy the complete acceptance contract**.
-
-## Build-only DexKit
-
-DexKit 2.2 is used off the target hot path. Its metadata/cross-platform capabilities
-allow the binding laboratory to operate without requiring the injected YouTube process.
-
-No DexKit library/native binary is packaged for runtime use.
-
-## Runtime materialization
-
-Release contains only compact verified descriptors and validation digests.
-
-At target startup:
-
-1. exact target identity passes;
-2. descriptor is materialized with the target ClassLoader;
-3. cheap shape/staticness/declaring-type checks pass;
-4. Hook Controller may install.
-
-Failure disables the dependent Endpoint/Feature or the whole module when bootstrap
-critical. It never starts a runtime resolver.
+One DexKit bridge is shared for a cold resolution pass and closed after installation. Installed callbacks never access it. Cache hits never open DexKit. The fallback fixture is tried cheaply but does not restrict supported YouTube versions.

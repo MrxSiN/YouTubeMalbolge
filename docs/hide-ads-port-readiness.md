@@ -1,7 +1,7 @@
 # Hide Ads port readiness (2026-09-23)
 
-Status: **analysis only**. No product feature, Malbolge source, Endpoint, BindingSpec,
-or hook is authorized by the current freeze state. Gate A and Gate B remain open.
+Status: **historical pre-migration analysis**. ADR-040 and the executable Malbolge AOT
+implementation supersede the freeze/gate statements below.
 
 ## Upstream reference
 

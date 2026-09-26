@@ -1,7 +1,7 @@
 # Phase-0 Device Observations — 2026-09-23
 
 Characterization device only. This is **not** the low-end reference runtime environment
-(`testdata/environment/reference-runtime.lock.yml` stays `UNBOUND`) and **not** a target
+(the reference runtime lock, since removed, stayed `UNBOUND`) and **not** a target
 binding (`target/current/target-release.lock.yml` is `ARTIFACT_SELECTED`, not `BOUND`).
 
 ## Environment

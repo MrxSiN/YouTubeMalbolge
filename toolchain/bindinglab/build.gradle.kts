@@ -19,5 +19,5 @@ android {
 }
 
 dependencies {
-    implementation("org.luckypray:dexkit:2.2.0")
+    implementation("org.luckypray:dexkit:2.3.0")
 }

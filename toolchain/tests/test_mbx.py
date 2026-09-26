@@ -1,188 +1,191 @@
-import hashlib
 import sys
+import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "toolchain"))
 
 from mbx_eval import BudgetError, SourceError, evaluate
-from mbx_frame import FrameError, parse_frame
-from validate_units import ModelError, evaluate_units, validate
+from mbx_program import OPCODES, ProgramError, code_uses, parse_program
+from validate_units import ModelError, evaluate_all, validate, validate_programs
 
 
-class FeatureUnitTest(unittest.TestCase):
+class ExecutableSourceTest(unittest.TestCase):
     def setUp(self):
-        self.source = (ROOT / "source/70_features/hide_ads_premium_offer.mal").read_bytes()
-        self.output = evaluate(self.source)
+        self.path = ROOT / "source/70_features/hide_ads_premium_offer.mal"
+        self.source = self.path.read_bytes()
+        self.program = parse_program(evaluate(self.source))
 
-    def test_feature_unit_is_valid_and_typed(self):
-        frame = parse_frame(self.output)
-        self.assertEqual(frame.unit_id, "hide_ads.premium_offer")
-        self.assertEqual(frame.imports, ())
-        self.assertEqual(frame.exports, ("hide_ads.premium_offer",))
-        self.assertEqual([record["kind"] for record in frame.records], ["Feature", "Effect"])
-        self.assertEqual(frame.records[1]["endpoint_id"], "premium_offer_visibility")
-        self.assertEqual(frame.records[1]["handler_function"], "hide_view")
+    def test_program_is_typed_executable_bytecode(self):
+        self.assertEqual(self.program.unit_id, "hide.ads.premium_offer")
+        self.assertEqual(self.program.endpoint_id, "premium_offer_visibility")
+        self.assertEqual(self.program.config_id, "hide_youtube_premium_promotions")
+        self.assertTrue(code_uses(self.program.code, OPCODES["SET_VISIBILITY"]))
+        self.assertEqual(self.program.code[-2:], bytes((OPCODES["PROCEED"], OPCODES["RETURN"])))
 
-    def test_payload_tampering_fails(self):
-        changed = self.output.replace(b"hide_view", b"show_view", 1)
-        with self.assertRaises(FrameError):
-            parse_frame(changed)
+    def test_every_behavior_source_is_mbp1_not_json(self):
+        areas = ("30_config", "40_manager", "50_diag", "60_resolver", "70_features")
+        for path in (path for area in areas for path in (ROOT / "source" / area).glob("*.mal")):
+            output = evaluate(path.read_bytes())
+            self.assertTrue(output.startswith(b"MBX2|"), path)
+            self.assertNotIn(b"handler_function", output)
+            self.assertNotIn(b'"kind"', output)
+            parse_program(output)
 
-    def test_budget_blocks_unbounded_execution(self):
-        with self.assertRaises(BudgetError):
-            evaluate(self.source, max_steps=1)
-        with self.assertRaises(BudgetError):
-            evaluate(self.source, max_output_bytes=1)
+    def test_tamper_and_budgets_fail(self):
+        output = evaluate(self.source)
+        changed = output[:-1] + (b"0" if output[-1:] != b"0" else b"1")
+        with self.assertRaises(ProgramError): parse_program(changed)
+        with self.assertRaises(BudgetError): evaluate(self.source, max_steps=1)
+        with self.assertRaises(BudgetError): evaluate(self.source, max_output_bytes=1)
+        with self.assertRaises(SourceError): evaluate(b"\xff\xff")
 
-    def test_invalid_source_rejected(self):
-        with self.assertRaises(SourceError):
-            evaluate(b"\xff\xff")
-
-    def test_source_hash_is_stable(self):
-        self.assertEqual(
-            hashlib.sha256(self.source).hexdigest(),
-            "99617a01be407dcfb444858c5c5334da6c6f6e31798e6b1b67641eb64b3f8dc8",
-        )
-
-    def test_cross_unit_references_and_target_hash(self):
-        graph = validate(evaluate_units())
-        self.assertEqual(len(graph["units"]), 32)
-        self.assertEqual(len(graph["records"]), 94)
-        effects = [record for record in graph["records"] if record["kind"] == "Effect"]
-        self.assertEqual(
-            {record["endpoint_id"] for record in effects},
-            {"ad_attribution_visibility", "premium_offer_visibility", "video_ad_loader", "player_ad_layout",
-             "player_controller", "video_stage", "playback_progress", "settings_root",
-             "sponsored_feed_component", "shorts_item_primary", "shorts_item_secondary"},
-        )
-
-        frames = evaluate_units()
-        binding = next(frame for frame in frames if frame.unit_id.startswith("binding."))
-        binding.records[0]["target_base_sha256"] = "0" * 64
-        with self.assertRaises(ModelError):
-            validate(frames)
-
-
-class SponsorBlockUnitTest(unittest.TestCase):
-    def setUp(self):
-        self.frames = evaluate_units()
-        self.feature = next(frame for frame in self.frames if frame.unit_id == "sponsorblock.skip_segments")
-
-    def effect(self, frames, handler):
-        unit = next(frame for frame in frames if frame.unit_id == "sponsorblock.skip_segments")
-        return next(r for r in unit.records if r.get("handler_function") == handler)
-
-    def test_feature_records(self):
-        kinds = [record["kind"] for record in self.feature.records]
-        self.assertEqual(kinds, ["Feature", "Effect", "Effect", "Effect", "SegmentSource"])
-        source = self.feature.records[4]
-        self.assertEqual(source["api_origin"], "https://sponsor.ajay.app")
-        self.assertEqual(source["action_type"], "skip")
-        self.assertEqual(source["hash_prefix_length"], 4)
-
-    def test_only_sponsor_category_skips_by_default(self):
-        configs = {
-            record["config_id"]: record["default"]
-            for frame in self.frames if frame.unit_id == "config.sponsorblock" for record in frame.records
-        }
-        self.assertTrue(configs.pop("sponsorblock_enabled"))
-        self.assertTrue(configs.pop("sponsorblock_skip_sponsor"))
-        self.assertEqual(set(configs.values()), {False})
-
-    def test_seek_endpoint_cannot_be_hooked(self):
-        self.effect(self.frames, "capture_receiver")["endpoint_id"] = "player_seek"
-        with self.assertRaises(ModelError):
-            validate(self.frames)
-
-    def test_segment_source_requires_https(self):
-        source = self.feature.records[4]
-        source["api_origin"] = "http://sponsor.ajay.app"
-        with self.assertRaises(ModelError):
-            validate(self.frames)
-
-    def test_plan_lowers_seek_and_categories(self):
-        from build_development import plan_lines
-
-        graph = validate(self.frames)
-        lines = plan_lines(graph["records"], "0" * 64, True)
-        seek = next(line for line in lines if line[0] == "seek")
-        self.assertEqual(seek[1:4], ["METHOD", "arwg", "ar"])
-        self.assertEqual(seek[-1], "SEEK_SOURCE_UNKNOWN")
-        progress = next(line for line in lines if line[0] == "hook" and line[7] == "skip_segments")
-        self.assertEqual(progress[1:3], ["CONSTRUCTOR", "aqgu"])
-        self.assertEqual(progress[-1], "0")
-        stage = next(line for line in lines if line[0] == "hook" and line[7] == "observe_video_id")
-        self.assertEqual(stage[1:4] + stage[-1:], ["METHOD", "jlu", "h", "h"])
-        segments = next(line for line in lines if line[0] == "segments")
-        self.assertTrue(segments[5].startswith("?categories=%5B%22sponsor%22"))
-        self.assertEqual(len([line for line in lines if line[0] == "category"]), 9)
-
-
-class ShortsAdUnitTest(unittest.TestCase):
-    def test_filter_uses_bound_feed_and_ad_predicate(self):
-        from build_development import plan_lines, verified_bindings
-
-        frames = evaluate_units()
+    def test_graph_and_program_ownership(self):
+        frames, programs = evaluate_all()
         graph = validate(frames)
-        bindings = {r["endpoint_id"]: r for r in graph["records"] if r["kind"] == "BindingSpec"}
-        verified_bindings(bindings)
-        hooks = [line for line in plan_lines(graph["records"], "0" * 64, True)
-                 if line[0] == "hook" and line[7] == "filter_shorts_ads"]
-        self.assertEqual(len(hooks), 2)
-        self.assertEqual({hook[3] for hook in hooks}, {"H", "I"})
-        for hook in hooks:
-            self.assertEqual(hook[10:14], ["METHOD", "aqdf", "U", "(Lbcpl;)Z"])
-
-    def test_filter_requires_predicate_role(self):
-        frames = evaluate_units()
-        feature = next(frame for frame in frames if frame.unit_id == "hide_ads.shorts_ad")
-        feature.records[1]["call_roles"].pop("predicate")
-        with self.assertRaises(ModelError):
-            validate(frames)
+        validate_programs(programs, graph)
+        self.assertEqual((len(graph["units"]), len(graph["records"]), len(programs)), (19, 60, 14))
+        self.assertFalse(any(r["kind"] in {"Feature", "Effect", "SegmentSource"} for r in graph["records"]))
+        self.assertEqual(len({p.endpoint_id for p in programs if p.endpoint_id != "-"}), 11)
 
 
-class SettingsUnitTest(unittest.TestCase):
-    def setUp(self):
-        self.frames = evaluate_units()
+class AotBehaviorTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        frames, cls.programs = evaluate_all()
+        cls.graph = validate(frames)
 
-    def page(self, frames):
-        unit = next(frame for frame in frames if frame.unit_id == "manager.settings")
-        return unit.records[0]
+    def program(self, unit_id):
+        return next(p for p in self.programs if p.unit_id == unit_id)
 
-    def test_page_exposes_every_config_item_once(self):
-        page = self.page(self.frames)
-        self.assertEqual(page["entry_order"], -1)
-        self.assertEqual([s["section_id"] for s in page["sections"]], ["hide_ads", "sponsorblock"])
-        exposed = [item["config_id"] for s in page["sections"] for item in s["items"]]
-        configs = [r["config_id"] for f in self.frames for r in f.records if r["kind"] == "ConfigItem"]
-        self.assertEqual(sorted(exposed), sorted(configs))
+    def test_shorts_is_program_owned(self):
+        for unit in ("hide.ads.shorts_primary", "hide.ads.shorts_secondary"):
+            program = self.program(unit)
+            self.assertEqual(program.members, ("shorts_ad_predicate",))
+            self.assertTrue(code_uses(program.code, OPCODES["MEMBER_CALL"]))
+            self.assertTrue(code_uses(program.code, OPCODES["LONG_ADD"]))
 
-    def test_missing_config_item_rejected(self):
-        self.page(self.frames)["sections"][0]["items"].pop()
-        with self.assertRaises(ModelError):
-            validate(self.frames)
+    def test_feed_patterns_live_only_in_program_constants(self):
+        program = self.program("hide.ads.sponsored_feed")
+        self.assertIn("carousel_ad", program.constants)
+        self.assertTrue(code_uses(program.code, OPCODES["STRING_CONTAINS"]))
+        backend = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / "toolchain/backend").glob("*.java"))
+        self.assertNotIn("carousel_ad", backend)
 
-    def test_only_settings_entry_may_be_unguarded(self):
-        unit = next(frame for frame in self.frames if frame.unit_id == "hide_ads.video_ads")
-        unit.records[1]["config_guard"] = None
-        with self.assertRaises(ModelError):
-            validate(self.frames)
+    def test_range_program_owns_hot_decision(self):
+        capture = self.program("sponsorblock.capture")
+        stage = self.program("sponsorblock.stage")
+        progress = self.program("sponsorblock.progress")
+        self.assertTrue(code_uses(capture.code, OPCODES["STATE_SET"]))
+        for operation in ("BOUND_FIELD_GET", "STRING_LENGTH", "OBJECT_EQUALS",
+                          "STATE_SET", "NEW_LONG_ARRAY", "ASYNC_LOAD"):
+            self.assertTrue(code_uses(stage.code, OPCODES[operation]), operation)
+        for operation in ("LONG_ARRAY_GET", "LONG_ARRAY_SET", "LONG_LT", "LONG_GE",
+                          "CONFIG_DYNAMIC", "CALL_LONG_PORT"):
+            self.assertTrue(code_uses(progress.code, OPCODES[operation]), operation)
+        self.assertNotIn("RANGE_PROGRESS", OPCODES)
+        backend = (ROOT / "toolchain/backend/GenerateModule.java").read_text()
+        self.assertNotIn("SEGMENT_END_MARGIN_MS", backend)
+        self.assertNotIn("onProgress", backend)
+        self.assertEqual(stage.constants[2], "https://sponsor.ajay.app")
+        self.assertEqual(stage.constants[21::2][0], "sponsor")
+        self.assertEqual(len(stage.constants[21::2]), 9)
 
-    def test_plan_lowers_settings(self):
+    def test_resolver_scoring_weights_are_malbolge_owned(self):
+        policy = self.program("resolver.policy")
+        self.assertEqual(tuple(map(int, policy.constants)), (100, 30, 20, 20, 20, 40, 60))
+
+    def test_settings_program_owns_injection(self):
+        program = self.program("settings.entry")
+        self.assertTrue(code_uses(program.code, OPCODES["UI_APPLY"]))
+        self.assertEqual(len(program.members), 14)
+        configs = set(self.program("config.policy").constants[1::3])
+        self.assertEqual(program.constants[0:6], ("ytmalbolge", "YouTube Malbolge", "-1",
+                                                 "Configure ads and SponsorBlock", "module",
+                                                 "preference_with_icon"))
+        self.assertEqual(configs, set(program.constants) & configs)
+
+    def test_diagnostics_policy_and_group_isolation_are_malbolge_driven(self):
+        policy = self.program("status.policy")
+        self.assertEqual(policy.constants[10:13],
+                         ("degraded", "One or more hook groups disabled", "failed"))
+        backend = (ROOT / "toolchain/backend/UiModelGenerator.java").read_text()
+        self.assertIn('m.visitLdcInsn("groups")', backend)
+        self.assertIn('h.configIndex() == item.configIndex()', backend)
+
+    def test_plan_has_only_generic_mbp_hooks(self):
         from build_development import plan_lines
-
-        lines = plan_lines(validate(self.frames)["records"], "0" * 64, True)
-        hook = next(line for line in lines if line[0] == "hook" and line[7] == "inject_settings_entry")
-        self.assertEqual(hook[1:4] + [hook[8]], ["METHOD", "oyj", "run", "-1"])
-        roles = {line[1] for line in lines if line[0] == "role"}
-        self.assertEqual(len(roles), 14)
-        self.assertIn(["layouts", "preference_with_icon"], lines)
-        page = next(line for line in lines if line[0] == "page")
-        self.assertEqual(page[1:], ["ytmalbolge", "YouTube Malbolge", "-1", "io.github.mrxsin.ytmalbolge",
-                                    "Configure ads and SponsorBlock", "module"])
+        lines = plan_lines(self.graph["records"], "0" * 64, self.programs)
+        hooks = [line for line in lines if line[0] == "hook"]
+        self.assertEqual(len(hooks), 11)
+        self.assertTrue(all(line[11] == "MBP1" for line in hooks))
+        phases = {}
+        for line in hooks:
+            phases.setdefault(line[10], set()).add(line[12])
+        self.assertTrue(all(len(values) == 1 for values in phases.values()))
+        self.assertFalse(any("handler" in field for line in hooks for field in line))
+        self.assertEqual(len([line for line in lines if line[0] == "category"]), 9)
         self.assertEqual(len([line for line in lines if line[0] == "item"]), 13)
+
+    def test_new_program_needs_no_dispatch_registration(self):
+        from build_development import plan_lines
+        base = self.program("hide.ads.premium_offer")
+        synthetic = replace(base, unit_id="acceptance.synthetic")
+        programs = [p for p in self.programs if p.endpoint_id != synthetic.endpoint_id] + [synthetic]
+        lines = plan_lines(self.graph["records"], "0" * 64, programs)
+        self.assertTrue(any(line[0] == "hook" and line[9] == "ytm.premium_offer_visibility.v2"
+                            and line[10] == "premium_offers" for line in lines))
+
+
+class ArchitectureTest(unittest.TestCase):
+    def test_purity_gate(self):
+        from check_purity import check
+        check()
+
+    def test_runtime_resolver_has_cache_and_single_bridge_lifecycle(self):
+        source = (ROOT / "app/src/main/java/io/github/mrxsin/ytmalbolge/RuntimeResolver.java").read_text()
+        self.assertIn("ytm-resolution-v3.properties", source)
+        self.assertIn("DexKitBridge.create", source)
+        self.assertIn("bridge.close()", source)
+        self.assertIn("splitSourceDirs", source)
+        self.assertIn("protoShorty", source)
+
+    def test_generated_entry_owns_api102_hot_reload(self):
+        source = (ROOT / "toolchain/backend/GenerateModule.java").read_text()
+        self.assertIn('"onHotReloading"', source)
+        self.assertIn('"onHotReloaded"', source)
+        self.assertIn('"getOldHookHandles"', source)
+        self.assertIn('"unregisterOnSharedPreferenceChangeListener"', source)
+        self.assertIn('"uninstall"', source)
+        self.assertIn('"autoHotReload=true\\n"',
+                      (ROOT / "toolchain/build_development.py").read_text())
+
+    def test_missing_program_reference_is_rejected(self):
+        frames, programs = evaluate_all()
+        graph = validate(frames)
+        program = replace(programs[0], members=("missing_endpoint",))
+        with self.assertRaises(ModelError): validate_programs([program], graph)
+
+    def test_resolver_candidate_vectors(self):
+        vectors = json.loads((ROOT / "testdata/resolver-vectors/candidates.json").read_text())
+        weights = vectors["policy"][:-1]
+        minimum = vectors["policy"][-1]
+        for case in vectors["cases"]:
+            scores = [sum(weight for weight, matched in zip(weights, candidate) if matched)
+                      for candidate in case["candidates"]]
+            winner = None
+            if scores:
+                best = max(scores)
+                if best >= minimum and scores.count(best) == 1:
+                    winner = scores.index(best)
+            if not case.get("hard_valid", True):
+                winner = None
+            self.assertEqual(winner, case["winner"], case["name"])
+        for case in vectors["cache"]:
+            uses_discovery = not (case["identity_matches"] and case["descriptor_valid"])
+            self.assertEqual(uses_discovery, case["uses_discovery"], case["name"])
 
 
 if __name__ == "__main__":

@@ -1,19 +1,6 @@
-# Verified Target Binding Set v1
+# Verified Binding Set v1
 
-Generated for one Target Release Manifest.
-
-```text
-target_manifest_digest
-bindings[
-  endpoint_id
-  class_descriptor
-  member_name
-  member_descriptor
-  member_kind
-  staticness
-  validation_digest
-]
-set_digest
-```
-
-Candidate/evidence history is private and is not part of the release set.
+The checked-in set is a regression fixture and cheap Tier-1 descriptor hint. Each entry
+contains member kind, owner/name/descriptor, staticness, and validation digest. Runtime
+use requires current-identity cache validation or a unique validated DexKit result; the
+set does not restrict support to its originating YouTube version.

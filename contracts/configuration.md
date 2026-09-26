@@ -71,11 +71,7 @@ Measured under Vector v2.2: preference-change callbacks arrive on Binder threads
 publishes by atomic reference swap only; it never blocks the Binder thread on host or
 UI work.
 
-## Hot reload
+## Lifetime
 
-Old generation unregisters its preference listener before approving reload.
-
-New generation attaches exactly one listener and reconstructs a fresh ConfigSnapshot
-from the persistent store plus any explicitly transferable neutral state.
-
-Repeated reload MUST NOT multiply listeners.
+One listener is attached during package-ready initialization. API-102 reload unregisters
+the old listener before installing the new generation, preventing duplicate callbacks.

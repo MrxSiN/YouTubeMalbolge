@@ -29,8 +29,8 @@ android {
         applicationId = "io.github.mrxsin.ytmalbolge"
         minSdk = 32
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     packaging {
@@ -57,6 +57,7 @@ dependencies {
     compileOnly("io.github.libxposed:api:102.0.0")
     // Manager-process access to RemotePreferences (contracts/configuration.md).
     implementation("io.github.libxposed:service:102.0.0")
+    implementation("org.luckypray:dexkit:2.3.0")
     implementation(files("../build/generated/module.jar"))
 }
 
@@ -64,31 +65,34 @@ dependencies {
 val malbolgeAsm = configurations.create("malbolgeAsm") { isTransitive = false }
 dependencies { malbolgeAsm("org.ow2.asm:asm:9.9.1") }
 
-val deviceTest = providers.gradleProperty("deviceTest").map(String::toBoolean).orElse(false)
-
 val generateMalbolgeModule = tasks.register<Exec>("generateMalbolgeModule") {
     workingDir = rootProject.projectDir
-    val command = mutableListOf("python", "toolchain/build_development.py")
-    if (deviceTest.get()) command += "--device-test"
-    commandLine(command)
-    inputs.property("deviceTest", deviceTest)
+    commandLine("python", "toolchain/build_development.py")
     inputs.files(malbolgeAsm)
     inputs.files(fileTree("../source") { include("**/*.mal") })
     inputs.files(fileTree("../toolchain/backend") { include("**/*.java") })
     inputs.file("src/main/res/drawable-nodpi/ytm_hellfire.png")
     inputs.files(
-        "../toolchain/mbx_eval.py", "../toolchain/mbx_frame.py",
+        "../toolchain/mbx_eval.py", "../toolchain/mbx_frame.py", "../toolchain/mbx_program.py",
         "../toolchain/validate_units.py", "../toolchain/build_development.py",
         "../toolchain/LOCKFILE",
         "../target/current/target-release.lock.yml", "../target/current/verified-binding-set.json"
     )
     outputs.file("../build/generated/module.jar")
-    doFirst {
-        environment("MALBOLGE_ASM_JAR", malbolgeAsm.singleFile.absolutePath)
-        if (deviceTest.get() && gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
-            error("deviceTest is only valid for a development APK")
-        }
-    }
+    doFirst { environment("MALBOLGE_ASM_JAR", malbolgeAsm.singleFile.absolutePath) }
 }
 
-tasks.named("preBuild") { dependsOn(generateMalbolgeModule) }
+val checkMalbolgePurity = tasks.register<Exec>("checkMalbolgePurity") {
+    workingDir = rootProject.projectDir
+    commandLine("python", "toolchain/check_purity.py")
+    inputs.files(
+        "../toolchain/check_purity.py", "../toolchain/build_development.py",
+        "../toolchain/validate_units.py", "../toolchain/mbx_eval.py",
+        "../toolchain/mbx_frame.py", "../toolchain/mbx_program.py"
+    )
+    inputs.files(fileTree("../toolchain/backend") { include("*.java") })
+    inputs.files(fileTree("src/main/java") { include("**/*.java") })
+    inputs.files(fileTree("../source") { include("30_config/*.mal", "40_manager/*.mal", "50_diag/*.mal", "60_resolver/*.mal", "70_features/*.mal") })
+}
+
+tasks.named("preBuild") { dependsOn(generateMalbolgeModule, checkMalbolgePurity) }

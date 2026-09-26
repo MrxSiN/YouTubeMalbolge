@@ -2,5 +2,5 @@
 
 The validated, backend-ready semantic plan.
 
-It contains only validated CMG semantics plus one exact Verified Target Binding Set.
+It contains validated semantic data, executable MBP1 programs, resolver policy, and fallback descriptors.
 It is not a release obfuscation representation and does not permit alternate behavior.

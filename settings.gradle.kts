@@ -16,5 +16,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "YouTubeMalbolge"
 include(":app")
-include(":bindinglab")
-project(":bindinglab").projectDir = file("toolchain/bindinglab")
