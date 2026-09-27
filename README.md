@@ -1,3 +1,6 @@
+# Dont use this. Still broken. This just meme build that I was just playig with Malbolge (to see how painful is it). Will rewrite this in BF to be working build. 
+
+
 # YouTubeMalbolge
 
 An API-102 libxposed module for YouTube ad hiding and SponsorBlock whose feature behavior is authored in real Malbolge.
